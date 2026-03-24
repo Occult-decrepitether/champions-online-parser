@@ -1,4 +1,3 @@
-# CO-ACTLib
+# CO-ACTLib v3.0.0 - Enhanced Edition
 
-A custom plug-in for Advanced Combat Tracker (ACT) that reads and analyzes Champions Online 
-combat logs, real-time or historical.
+an updated ACT plugin for champions online parsing
