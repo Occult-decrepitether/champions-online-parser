@@ -49,10 +49,9 @@ namespace Parsing_Plugin
         private TextBox txtDPSHandle;
         private TextBox txtHPSHandle;
 
+        private int currentOpacityPct = 99;
         private bool isDragging = false;
         private Point dragOffset;
-        private bool clickThrough = false;
-        private ContextMenuStrip contextMenu;
 
         private enum LayoutMode { Main, Vertical, Horizontal }
         private LayoutMode currentLayout = LayoutMode.Main;
@@ -201,16 +200,6 @@ namespace Parsing_Plugin
             catch { }
             this.MinimumSize = new Size(420, 400);
 
-            contextMenu = new ContextMenuStrip();
-            ToolStripMenuItem layoutMenu = new ToolStripMenuItem("Layout");
-            layoutMenu.DropDownItems.Add("Main (Grid)", null, (s, e) => ApplyLayout(LayoutMode.Main));
-            layoutMenu.DropDownItems.Add("Vertical", null, (s, e) => ApplyLayout(LayoutMode.Vertical));
-            layoutMenu.DropDownItems.Add("Horizontal", null, (s, e) => ApplyLayout(LayoutMode.Horizontal));
-            contextMenu.Items.Add(layoutMenu);
-            contextMenu.Items.Add("Click-Through", null, (s, e) => ToggleClickThrough());
-            contextMenu.Items.Add(new ToolStripSeparator());
-            contextMenu.Items.Add("Close Overlay", null, (s, e) => this.Hide());
-            this.ContextMenuStrip = contextMenu;
 
             panelTopRow = new Panel();
             panelTopRow.Dock = DockStyle.Top;
@@ -673,6 +662,20 @@ namespace Parsing_Plugin
         private static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool ReleaseCapture();
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        private void SetOpacitySafe(double opacity)
+        {
+            if (opacity < 0.4) opacity = 0.4;
+            if (opacity > 1.0) opacity = 1.0;
+            currentOpacityPct = (int)(opacity * 100);
+            this.Opacity = opacity;
+        }
         [System.Runtime.InteropServices.DllImport("shell32.dll")]
         private static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid,
             [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Interface)] out object propertyStore);
@@ -1557,7 +1560,7 @@ namespace Parsing_Plugin
                 xw.WriteStartElement("MiniOverlayConfig");
 
                 xw.WriteElementString("Layout", currentLayout.ToString());
-                xw.WriteElementString("Opacity", ((int)(this.Opacity * 100)).ToString());
+                xw.WriteElementString("Opacity", currentOpacityPct.ToString());
                 xw.WriteElementString("LocationX", this.Location.X.ToString());
                 xw.WriteElementString("LocationY", this.Location.Y.ToString());
                 xw.WriteElementString("Width", this.Size.Width.ToString());
@@ -1608,7 +1611,7 @@ namespace Parsing_Plugin
                 }
 
                 n = root.SelectSingleNode("Opacity");
-                if (n != null) { int op; if (int.TryParse(n.InnerText, out op)) this.Opacity = op / 100.0; }
+                if (n != null) { int op; if (int.TryParse(n.InnerText, out op)) SetOpacitySafe(op / 100.0); }
 
                 int lx = this.Location.X, ly = this.Location.Y;
                 n = root.SelectSingleNode("LocationX"); if (n != null) int.TryParse(n.InnerText, out lx);
@@ -1667,15 +1670,15 @@ namespace Parsing_Plugin
             popup.Deactivate += (s, ev) => { popup.Close(); };
 
             TrackBar slider = new TrackBar();
-            slider.Minimum = 20;
+            slider.Minimum = 40;
             slider.Maximum = 100;
-            slider.Value = (int)(this.Opacity * 100);
+            slider.Value = currentOpacityPct;
             slider.TickStyle = TickStyle.None;
             slider.Dock = DockStyle.Fill;
             slider.BackColor = Color.FromArgb(50, 50, 50);
             slider.ValueChanged += (s, ev) =>
             {
-                this.Opacity = slider.Value / 100.0;
+                SetOpacitySafe(slider.Value / 100.0);
             };
 
             popup.Controls.Add(slider);
@@ -1958,12 +1961,6 @@ namespace Parsing_Plugin
             return null;
         }
 
-        private void ToggleClickThrough()
-        {
-            clickThrough = !clickThrough;
-            ((ToolStripMenuItem)contextMenu.Items[0]).Checked = clickThrough;
-        }
-
         private const int RESIZE_BORDER = 48;
         private const int WM_NCHITTEST = 0x84;
         private const int HTLEFT = 10;
@@ -1994,10 +1991,8 @@ namespace Parsing_Plugin
             get
             {
                 CreateParams cp = base.CreateParams;
-                if (clickThrough)
-                {
-                    cp.ExStyle |= 0x20 | 0x80000;
-                }
+                // Ensure WS_EX_TRANSPARENT is never set (prevents click-through)
+                cp.ExStyle &= ~0x20;
                 return cp;
             }
         }
@@ -2145,7 +2140,7 @@ namespace Parsing_Plugin
                 xw.WriteStartElement("MiniOverlayConfig");
 
                 xw.WriteElementString("Layout", currentLayout.ToString());
-                xw.WriteElementString("Opacity", ((int)(this.Opacity * 100)).ToString());
+                xw.WriteElementString("Opacity", currentOpacityPct.ToString());
                 xw.WriteElementString("LocationX", this.Location.X.ToString());
                 xw.WriteElementString("LocationY", this.Location.Y.ToString());
                 xw.WriteElementString("Width", this.Size.Width.ToString());
@@ -2199,7 +2194,7 @@ namespace Parsing_Plugin
                 }
 
                 n = root.SelectSingleNode("Opacity");
-                if (n != null) { int op; if (int.TryParse(n.InnerText, out op)) this.Opacity = op / 100.0; }
+                if (n != null) { int op; if (int.TryParse(n.InnerText, out op)) SetOpacitySafe(op / 100.0); }
 
                 int lx = this.Location.X, ly = this.Location.Y;
                 n = root.SelectSingleNode("LocationX"); if (n != null) int.TryParse(n.InnerText, out lx);
