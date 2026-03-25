@@ -2,11 +2,8 @@
 using System.Reflection;
 using Advanced_Combat_Tracker;
 using System.Windows.Forms;
-using System.Text.RegularExpressions;
 using System.Text;
 using System.Globalization;
-using System.Collections;
-using System.Collections.Specialized;
 using System.Collections.Generic;
 
 namespace Parsing_Plugin
@@ -131,7 +128,7 @@ namespace Parsing_Plugin
             else if (magnitude < 0 && magnitudeBase <= 0 && type.Contains("HitPoints"))
             {
                 effectType = EffectType.Heal;
-                swingtype = swingtype = (int)effectType;
+                swingtype = (int)effectType;
                 dnum = new Dnum((int)magnitude * -1);
                 if (sourceDisplay == targetDisplay || ownerDisplay == targetDisplay)
                 {
@@ -143,19 +140,19 @@ namespace Parsing_Plugin
             else if (magnitude < 0 && magnitudeBase == 0 && type.Contains("Power"))
             {
                 effectType = EffectType.PowerGain;
-                swingtype = swingtype = (int)effectType;
+                swingtype = (int)effectType;
                 dnum = new Dnum((int)magnitude * -1);
             }
             else if (magnitude > 0 && magnitudeBase > 0 && type.Contains("Power"))
             {
                 effectType = EffectType.PowerDrain;
-                swingtype = swingtype = (int)effectType;
-                dnum = new Dnum((int)magnitude * 1);
+                swingtype = (int)effectType;
+                dnum = new Dnum((int)magnitude);
             }
             else if (type.Contains("Shield"))
             {
                 effectType = EffectType.Shield;
-                swingtype = swingtype = (int)effectType;
+                swingtype = (int)effectType;
                 dnum = new Dnum((int)magnitude * -1);
                 dnum.DamageString2 = ((int)magnitudeBase * -1).ToString();
                 flags += (flags.Length == 0) ? magnitudeBase.ToString() : "|" + ((int)magnitudeBase).ToString();

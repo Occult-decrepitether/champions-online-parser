@@ -2,11 +2,8 @@ using System;
 using System.Reflection;
 using Advanced_Combat_Tracker;
 using System.Windows.Forms;
-using System.Text.RegularExpressions;
 using System.Text;
 using System.Globalization;
-using System.Collections;
-using System.Collections.Specialized;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -355,8 +352,6 @@ namespace Parsing_Plugin
             ActGlobals.oFormActMain.OptionsTreeView.Nodes[dcIndex].Expand();
 
             xmlSettings = new SettingsSerializer(this);
-            string FileName = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\CO_ACTLib\\recents.cfg";
-            FileInfo RecFile = new FileInfo(FileName);
 
             LoadSettings();
 
@@ -387,7 +382,7 @@ namespace Parsing_Plugin
             }
             catch { }
 
-            pluginStatusText.Text = Constants.OnLoadStatusText + " Expire Date: None";
+            pluginStatusText.Text = Constants.OnLoadStatusText;
 
         }
 

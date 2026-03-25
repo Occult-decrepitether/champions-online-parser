@@ -688,12 +688,7 @@ namespace Parsing_Plugin
         private static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool ReleaseCapture();
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
 
         private void SetOpacitySafe(double opacity)
         {
@@ -1757,12 +1752,10 @@ namespace Parsing_Plugin
                 this.Size = new Size(w, h);
                 this.Location = new Point(lx, ly);
 
-                // Close existing child overlays
                 foreach (ChildOverlay c in new List<ChildOverlay>(childOverlays))
                     c.Close();
                 childOverlays.Clear();
 
-                // Load child overlays
                 n = root.SelectSingleNode("ChildCount");
                 int childCount = 0;
                 if (n != null) int.TryParse(n.InnerText, out childCount);
@@ -2113,13 +2106,6 @@ namespace Parsing_Plugin
 
         private const int RESIZE_BORDER = 48;
         private const int WM_NCHITTEST = 0x84;
-        private const int HTLEFT = 10;
-        private const int HTRIGHT = 11;
-        private const int HTTOP = 12;
-        private const int HTTOPLEFT = 13;
-        private const int HTTOPRIGHT = 14;
-        private const int HTBOTTOM = 15;
-        private const int HTBOTTOMLEFT = 16;
         private const int HTBOTTOMRIGHT = 17;
 
         protected override void WndProc(ref Message m)

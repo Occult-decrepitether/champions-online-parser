@@ -2,11 +2,7 @@
 using System.Reflection;
 using Advanced_Combat_Tracker;
 using System.Windows.Forms;
-using System.Text.RegularExpressions;
-using System.Text;
 using System.Globalization;
-using System.Collections;
-using System.Collections.Specialized;
 using System.Collections.Generic;
 
 namespace Parsing_Plugin
