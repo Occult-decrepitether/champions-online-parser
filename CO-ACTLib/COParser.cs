@@ -676,6 +676,11 @@ namespace Parsing_Plugin
                 catch { }
             }
 
+            if (v.eventDisplay == "Mend" && v.magnitude < 0 && v.type.Contains("HitPoints"))
+            {
+                v.targetDisplay = v.ownerDisplay;
+            }
+
             if (!v.ignore) { ProcessEvent(v, logInfo); }
 
         }

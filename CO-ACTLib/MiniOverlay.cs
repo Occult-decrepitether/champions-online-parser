@@ -38,6 +38,7 @@ namespace Parsing_Plugin
         private Label lblMendHeader;
         private Label lblMendContent;
         private Label lblMendEmoticon;
+        private Panel mendEmoticonWrapper;
         private Panel dividerMend;
 
         private Panel panelButtonBar;
@@ -66,6 +67,9 @@ namespace Parsing_Plugin
         }
         private List<TileInfo> tileOrder;
         private Form tilesPopup;
+
+        private List<ChildOverlay> childOverlays = new List<ChildOverlay>();
+        private Form addTilesPopup;
 
         public string DPSHandle { get; set; }
         public string HPSHandle { get; set; }
@@ -198,7 +202,7 @@ namespace Parsing_Plugin
                 this.Icon = Icon.FromHandle(bmp.GetHicon());
             }
             catch { }
-            this.MinimumSize = new Size(420, 400);
+            this.MinimumSize = new Size(115, 400);
 
 
             panelTopRow = new Panel();
@@ -230,7 +234,7 @@ namespace Parsing_Plugin
             Panel dividerTop = new Panel();
             dividerTop.Dock = DockStyle.Left;
             dividerTop.Width = DIVIDER_WIDTH;
-            dividerTop.BackColor = DIVIDER_COLOR;
+            dividerTop.BackColor = Color.Transparent;
 
             panelHPS = new Panel();
             panelHPS.Dock = DockStyle.Fill;
@@ -278,14 +282,31 @@ namespace Parsing_Plugin
             lblMendEmoticon.Text = "";
             lblMendEmoticon.Font = new Font("Consolas", 18F, FontStyle.Bold);
             lblMendEmoticon.Dock = DockStyle.Bottom;
-            lblMendEmoticon.Height = 50;
-            lblMendEmoticon.TextAlign = ContentAlignment.BottomLeft;
-            lblMendEmoticon.Padding = new Padding(4, 0, 0, 2);
-            lblMendEmoticon.BackColor = Color.Transparent;
+            lblMendEmoticon.Height = 30;
+            lblMendEmoticon.TextAlign = ContentAlignment.MiddleLeft;
+            lblMendEmoticon.Padding = new Padding(4, 0, 0, 0);
+            lblMendEmoticon.BackColor = Color.FromArgb(30, 30, 30);
             lblMendEmoticon.Visible = false;
 
+            Panel mendEmoticonDivider = new Panel();
+            mendEmoticonDivider.Dock = DockStyle.Bottom;
+            mendEmoticonDivider.Height = 2;
+            mendEmoticonDivider.BackColor = DIVIDER_COLOR;
+
+            mendEmoticonWrapper = new Panel();
+            mendEmoticonWrapper.Dock = DockStyle.Bottom;
+            mendEmoticonWrapper.Height = 34;
+            mendEmoticonWrapper.BackColor = DIVIDER_COLOR;
+            mendEmoticonWrapper.Padding = new Padding(2, 0, 2, 2);
+            mendEmoticonWrapper.Visible = false;
+
+            lblMendEmoticon.Dock = DockStyle.Fill;
+            lblMendEmoticon.Height = 0;
+            mendEmoticonWrapper.Controls.Add(lblMendEmoticon);
+
             panelMend.Controls.Add(lblMendContent);
-            panelMend.Controls.Add(lblMendEmoticon);
+            panelMend.Controls.Add(mendEmoticonDivider);
+            panelMend.Controls.Add(mendEmoticonWrapper);
             panelMend.Controls.Add(lblMendHeader);
 
             dividerMend = new Panel();
@@ -465,7 +486,7 @@ namespace Parsing_Plugin
             panelButtonBar.Controls.Add(btnClose);
             panelButtonBar.Controls.Add(lblEmoticon);
 
-            this.MinimumSize = new Size(420, 200);
+            this.MinimumSize = new Size(115, 200);
 
             lblHandleTracking = new Label();
             lblHandleTracking.Text = "Handle Tracking";
@@ -646,6 +667,11 @@ namespace Parsing_Plugin
                         return;
                     }
                 }
+                if (this.WindowState == FormWindowState.Maximized)
+                {
+                    this.WindowState = FormWindowState.Normal;
+                    formPoint = new Point(this.Width / 2, formPoint.Y);
+                }
                 isDragging = true;
                 dragOffset = formPoint;
             }
@@ -675,7 +701,10 @@ namespace Parsing_Plugin
             if (opacity > 1.0) opacity = 1.0;
             currentOpacityPct = (int)(opacity * 100);
             this.Opacity = opacity;
+            foreach (ChildOverlay c in childOverlays)
+                c.Opacity = opacity;
         }
+
         [System.Runtime.InteropServices.DllImport("shell32.dll")]
         private static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid,
             [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Interface)] out object propertyStore);
@@ -746,29 +775,36 @@ namespace Parsing_Plugin
             catch { }
         }
 
+        private static void SetText(Label lbl, string text)
+        {
+            if (lbl.Text != text) lbl.Text = text;
+        }
+
         private void UpdateOverlayData()
         {
             if (!this.Visible) return;
+            this.SuspendLayout();
 
             EncounterData encounter = GetCurrentEncounter();
             if (encounter == null)
             {
-                lblDPSEncTitle.Text = "";
-                lblHPSEncTitle.Text = "";
-                lblDPSContent.Text = "  No encounter data";
-                lblHPSContent.Text = "  No encounter data";
-                lblMyDPSContent.Text = "  No data";
-                lblMyHPSContent.Text = "  No data";
-                lblMendContent.Text = "  No Mend detected";
-                if (lblMendEmoticon != null) lblMendEmoticon.Visible = false;
+                SetText(lblDPSEncTitle, "");
+                SetText(lblHPSEncTitle, "");
+                SetText(lblDPSContent, "  No encounter data");
+                SetText(lblHPSContent, "  No encounter data");
+                SetText(lblMyDPSContent, "  No data");
+                SetText(lblMyHPSContent, "  No data");
+                SetText(lblMendContent, "  No Mend detected");
+                if (lblMendEmoticon != null) { lblMendEmoticon.Visible = false; if (mendEmoticonWrapper != null) mendEmoticonWrapper.Visible = false; }
+                this.ResumeLayout();
                 return;
             }
 
             string encTitle = encounter.Title;
             string duration = encounter.DurationS;
             string titleText = encTitle + " (" + duration + ")";
-            lblDPSEncTitle.Text = titleText;
-            lblHPSEncTitle.Text = titleText;
+            SetText(lblDPSEncTitle, titleText);
+            SetText(lblHPSEncTitle, titleText);
 
             List<CombatantData> combatants = new List<CombatantData>();
             try
@@ -788,36 +824,38 @@ namespace Parsing_Plugin
 
             string dpsText = FormatCombatantList(dpsSorted, true, lblDPSContent);
             string hpsText = FormatCombatantList(hpsSorted, false, lblHPSContent);
-            lblDPSContent.Text = dpsText;
-            lblHPSContent.Text = hpsText;
+            SetText(lblDPSContent, dpsText);
+            SetText(lblHPSContent, hpsText);
 
             CombatantData dpsChar = FindMyCharacter(combatants, DPSHandle);
             if (dpsChar != null)
             {
-                lblMyDPSHeader.Text = dpsChar.Name.Trim() + "'s Tracked DPS";
-                lblMyDPSContent.Text = FormatPowerBreakdown(dpsChar, true, encounter, lblMyDPSContent.Width);
+                SetText(lblMyDPSHeader, dpsChar.Name.Trim() + "'s Tracked DPS");
+                SetText(lblMyDPSContent, FormatPowerBreakdown(dpsChar, true, encounter, lblMyDPSContent.Width));
             }
             else
             {
-                lblMyDPSHeader.Text = "Tracked DPS";
+                SetText(lblMyDPSHeader, "Tracked DPS");
                 string hint = string.IsNullOrEmpty(DPSHandle) ? " (set DPS handle above)" : "";
-                lblMyDPSContent.Text = "  No char found" + hint;
+                SetText(lblMyDPSContent, "  No char found" + hint);
             }
 
             CombatantData hpsChar = FindMyCharacter(combatants, HPSHandle);
             if (hpsChar != null)
             {
-                lblMyHPSHeader.Text = hpsChar.Name.Trim() + "'s Tracked HPS";
-                lblMyHPSContent.Text = FormatPowerBreakdown(hpsChar, false, encounter, lblMyHPSContent.Width);
+                SetText(lblMyHPSHeader, hpsChar.Name.Trim() + "'s Tracked HPS");
+                SetText(lblMyHPSContent, FormatPowerBreakdown(hpsChar, false, encounter, lblMyHPSContent.Width));
             }
             else
             {
-                lblMyHPSHeader.Text = "Tracked HPS";
+                SetText(lblMyHPSHeader, "Tracked HPS");
                 string hint = string.IsNullOrEmpty(HPSHandle) ? " (set HPS handle above)" : "";
-                lblMyHPSContent.Text = "  No char found" + hint;
+                SetText(lblMyHPSContent, "  No char found" + hint);
             }
 
             UpdateMendTracker(encounter);
+            AutoFitAllFonts();
+            this.ResumeLayout();
         }
 
         private void UpdateMendTracker(EncounterData encounter)
@@ -825,8 +863,8 @@ namespace Parsing_Plugin
             Dictionary<string, COParser.MendData> mendData = COParser.GetMendData();
             if (mendData.Count == 0)
             {
-                lblMendContent.Text = "  No Mend detected";
-                if (lblMendEmoticon != null) lblMendEmoticon.Visible = false;
+                SetText(lblMendContent, "  No Mend detected");
+                if (lblMendEmoticon != null) { lblMendEmoticon.Visible = false; if (mendEmoticonWrapper != null) mendEmoticonWrapper.Visible = false; }
                 return;
             }
 
@@ -844,44 +882,7 @@ namespace Parsing_Plugin
             }
             int nameW = Math.Min(longestName, 20);
 
-            int mendPanelWidth = lblMendContent.Width;
             int wHps = 6, wMax = 6, wMin = 6;
-
-            try
-            {
-                Label measLabel = lblMendContent;
-                Font f = measLabel.Font;
-                int availWidth = mendPanelWidth - 10;
-                using (Graphics g = measLabel.CreateGraphics())
-                {
-                    while (nameW > 3)
-                    {
-                        string test = " " + new string('X', nameW) + "\u2502" + new string('X', wHps) + "\u2502" + new string('X', wMax) + "\u2502" + new string('X', wMin);
-                        if (g.MeasureString(test, f).Width <= availWidth) break;
-                        nameW--;
-                    }
-                    while (wMin > 3)
-                    {
-                        string test = " " + new string('X', nameW) + "\u2502" + new string('X', wHps) + "\u2502" + new string('X', wMax) + "\u2502" + new string('X', wMin);
-                        if (g.MeasureString(test, f).Width <= availWidth) break;
-                        wMin--;
-                    }
-                    while (wMax > 3)
-                    {
-                        string test = " " + new string('X', nameW) + "\u2502" + new string('X', wHps) + "\u2502" + new string('X', wMax) + "\u2502" + new string('X', wMin);
-                        if (g.MeasureString(test, f).Width <= availWidth) break;
-                        wMax--;
-                    }
-                    while (wHps > 3)
-                    {
-                        string test = " " + new string('X', nameW) + "\u2502" + new string('X', wHps) + "\u2502" + new string('X', wMax) + "\u2502" + new string('X', wMin);
-                        if (g.MeasureString(test, f).Width <= availWidth) break;
-                        wHps--;
-                    }
-                }
-            }
-            catch { }
-            if (nameW < 3) nameW = 3;
 
             string result = String.Format(" {0,-" + nameW + "}\u2502{1," + wHps + "}\u2502{2," + wMax + "}\u2502{3," + wMin + "}\r\n",
                 ClipText("User", nameW), ClipText("HPS", wHps), ClipText("MaxHit", wMax), ClipText("MinHit", wMin));
@@ -909,7 +910,7 @@ namespace Parsing_Plugin
             }
             int overallAvg = totalTicks > 0 ? (int)(totalHealed / totalTicks) : 0;
 
-            lblMendContent.Text = result;
+            SetText(lblMendContent, result);
 
             if (lblMendEmoticon != null)
             {
@@ -924,10 +925,11 @@ namespace Parsing_Plugin
                     lblMendEmoticon.ForeColor = Color.FromArgb(255, 60, 255, 60);
                 }
                 lblMendEmoticon.Visible = true;
+                if (mendEmoticonWrapper != null) mendEmoticonWrapper.Visible = true;
             }
         }
 
-        private CombatantData FindMyCharacter(List<CombatantData> combatants, string handle)
+        internal CombatantData FindMyCharacter(List<CombatantData> combatants, string handle)
         {
             if (!string.IsNullOrEmpty(handle))
             {
@@ -958,7 +960,7 @@ namespace Parsing_Plugin
             return null;
         }
 
-        private string FormatPowerBreakdown(CombatantData myData, bool isDPS, EncounterData encounter, int panelWidth)
+        internal string FormatPowerBreakdown(CombatantData myData, bool isDPS, EncounterData encounter, int panelWidth)
         {
             string result = "";
             List<PowerEntry> powers = new List<PowerEntry>();
@@ -1040,55 +1042,12 @@ namespace Parsing_Plugin
             int longestName = 5;
             foreach (PowerEntry pe in powers)
                 if (pe.Name.Length > longestName) longestName = pe.Name.Length;
-            int nameWidth = Math.Min(longestName, 30);
+            int nameWidth = Math.Min(longestName, 20);
 
             int wPs = 5;
             int wPct = 4;
             int wMax = 6;
             int wLow = 6;
-
-            try
-            {
-                Label measLabel = isDPS ? lblMyDPSContent : lblMyHPSContent;
-                Font f = measLabel.Font;
-                int availWidth = panelWidth - 10;
-
-                using (Graphics g = measLabel.CreateGraphics())
-                {
-                    while (nameWidth > 3)
-                    {
-                        string test = " " + new string('X', nameWidth) + "\u2502" + new string('X', wPs) + "\u2502" + new string('X', wPct) + "\u2502" + new string('X', wMax) + "\u2502" + new string('X', wLow);
-                        if (g.MeasureString(test, f).Width <= availWidth) break;
-                        nameWidth--;
-                    }
-                    while (wLow > 3)
-                    {
-                        string test = " " + new string('X', nameWidth) + "\u2502" + new string('X', wPs) + "\u2502" + new string('X', wPct) + "\u2502" + new string('X', wMax) + "\u2502" + new string('X', wLow);
-                        if (g.MeasureString(test, f).Width <= availWidth) break;
-                        wLow--;
-                    }
-                    while (wMax > 3)
-                    {
-                        string test = " " + new string('X', nameWidth) + "\u2502" + new string('X', wPs) + "\u2502" + new string('X', wPct) + "\u2502" + new string('X', wMax) + "\u2502" + new string('X', wLow);
-                        if (g.MeasureString(test, f).Width <= availWidth) break;
-                        wMax--;
-                    }
-                    while (wPct > 2)
-                    {
-                        string test = " " + new string('X', nameWidth) + "\u2502" + new string('X', wPs) + "\u2502" + new string('X', wPct) + "\u2502" + new string('X', wMax) + "\u2502" + new string('X', wLow);
-                        if (g.MeasureString(test, f).Width <= availWidth) break;
-                        wPct--;
-                    }
-                    while (wPs > 3)
-                    {
-                        string test = " " + new string('X', nameWidth) + "\u2502" + new string('X', wPs) + "\u2502" + new string('X', wPct) + "\u2502" + new string('X', wMax) + "\u2502" + new string('X', wLow);
-                        if (g.MeasureString(test, f).Width <= availWidth) break;
-                        wPs--;
-                    }
-                }
-            }
-            catch { }
-            if (nameWidth < 3) nameWidth = 3;
 
             string hdrPower = ClipText("Power", nameWidth);
             string hdrPs = ClipText(psLabel, wPs);
@@ -1146,37 +1105,18 @@ namespace Parsing_Plugin
             }
             if (total == 0) total = 1;
 
-            int wName = 10, wVal = 6, wPct = 4;
-            try
-            {
-                Font f = contentLabel.Font;
-                int availWidth = contentLabel.Width - 10;
-                using (Graphics g = contentLabel.CreateGraphics())
-                {
-                    while (wName > 3)
-                    {
-                        string test = " " + new string('X', wName) + " " + new string('X', wVal) + " " + new string('X', wPct);
-                        if (g.MeasureString(test, f).Width <= availWidth) break;
-                        wName--;
-                    }
-                    while (wVal > 3)
-                    {
-                        string test = " " + new string('X', wName) + " " + new string('X', wVal) + " " + new string('X', wPct);
-                        if (g.MeasureString(test, f).Width <= availWidth) break;
-                        wVal--;
-                    }
-                }
-            }
-            catch { }
-            if (wName < 3) wName = 3;
+            int wName = 12, wVal = 6, wPct = 4;
 
-            string result = "";
-            int maxRows = 20;
+            string valLabel = isDPS ? "DPS" : "HPS";
+            string result = String.Format(" {0,-" + wName + "}\u2502{1," + wVal + "}\u2502{2," + wPct + "}\r\n",
+                ClipText("Name", wName), ClipText(valLabel, wVal), ClipText("%", wPct));
+            result += " " + new string('\u2500', wName) + "\u253C" + new string('\u2500', wVal) + "\u253C" + new string('\u2500', wPct) + "\r\n";
+
             int count = 0;
 
             foreach (CombatantData cd in combatants)
             {
-                if (count >= maxRows) break;
+                if (count >= 20) break;
 
                 string name = ClipText(cd.Name, wName);
 
@@ -1184,7 +1124,7 @@ namespace Parsing_Plugin
                 {
                     double dps = cd.EncDPS;
                     double pct = (cd.Damage * 100.0) / total;
-                    result += String.Format(" {0,-" + wName + "} {1," + wVal + "} {2," + (wPct - 1) + ":0}%\r\n",
+                    result += String.Format(" {0,-" + wName + "}\u2502{1," + wVal + "}\u2502{2," + (wPct - 1) + ":0}%\r\n",
                         name,
                         ClipText(FormatNumber(dps), wVal),
                         pct);
@@ -1197,7 +1137,7 @@ namespace Parsing_Plugin
                     if (healed <= 0) continue;
 
                     double pct = (healed * 100.0) / total;
-                    result += String.Format(" {0,-" + wName + "} {1," + wVal + "} {2," + (wPct - 1) + ":0}%\r\n",
+                    result += String.Format(" {0,-" + wName + "}\u2502{1," + wVal + "}\u2502{2," + (wPct - 1) + ":0}%\r\n",
                         name,
                         ClipText(FormatNumber(hps), wVal),
                         pct);
@@ -1257,13 +1197,62 @@ namespace Parsing_Plugin
             return btn;
         }
 
-        private float[] tileFontSizes = { 8.5f, 8.5f, 8.5f, 8.5f, 8.5f };
+        private float[] tileFontSizes = { 48f, 48f, 48f, 48f, 48f };
 
         private void ApplyFontSize(int tileIdx, float size)
         {
             tileFontSizes[tileIdx] = size;
+            AutoFitTileFont(tileIdx);
+        }
+
+        private void AutoFitTileFont(int tileIdx)
+        {
             Label[] contentLabels = { lblDPSContent, lblHPSContent, lblMendContent, lblMyDPSContent, lblMyHPSContent };
-            contentLabels[tileIdx].Font = new Font("Consolas", size, FontStyle.Regular);
+            Label lbl = contentLabels[tileIdx];
+            if (lbl == null || string.IsNullOrEmpty(lbl.Text)) return;
+
+            float maxSize = tileFontSizes[tileIdx];
+            int rawWidth = lbl.Width - lbl.Padding.Left - lbl.Padding.Right;
+            int availWidth = rawWidth - Math.Max(30, (int)(rawWidth * 0.08));
+            if (availWidth < 20) { lbl.Font = new Font("Consolas", maxSize); return; }
+
+            string[] lines = lbl.Text.Split('\n');
+            string longestLine = "";
+            foreach (string line in lines)
+            {
+                if (line.Length > longestLine.Length) longestLine = line;
+            }
+            if (longestLine.Length == 0) { lbl.Font = new Font("Consolas", maxSize); return; }
+
+            int availHeight = lbl.Height - lbl.Padding.Top - lbl.Padding.Bottom;
+            int lineCount = lines.Length;
+
+            float bestSize = 3f;
+            try
+            {
+                for (float sz = maxSize; sz >= 3f; sz -= 0.5f)
+                {
+                    using (Font f = new Font("Consolas", sz))
+                    {
+                        int w = TextRenderer.MeasureText(longestLine, f, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+                        if (w > availWidth) continue;
+                        int lineH = TextRenderer.MeasureText("X", f).Height;
+                        if (lineCount * lineH > availHeight && availHeight > 0) continue;
+                        bestSize = sz;
+                        break;
+                    }
+                }
+            }
+            catch { bestSize = maxSize; }
+
+            if (Math.Abs(lbl.Font.Size - bestSize) > 0.1f)
+                lbl.Font = new Font("Consolas", bestSize);
+        }
+
+        private void AutoFitAllFonts()
+        {
+            for (int i = 0; i < 5; i++)
+                AutoFitTileFont(i);
         }
 
         private void ShowTextSizePopup(Control anchor) { ShowTextSizePopup(anchor.PointToScreen(new Point(0, anchor.Height))); }
@@ -1295,8 +1284,8 @@ namespace Parsing_Plugin
                 lbl.AutoSize = true;
 
                 TrackBar slider = new TrackBar();
-                slider.Minimum = 6;
-                slider.Maximum = 16;
+                slider.Minimum = 3;
+                slider.Maximum = 30;
                 slider.Value = (idx == 0) ? (int)tileFontSizes[0] : (int)tileFontSizes[idx - 1];
                 slider.TickStyle = TickStyle.None;
                 slider.Location = new Point(100, y);
@@ -1354,26 +1343,40 @@ namespace Parsing_Plugin
             popup.ShowInTaskbar = false;
             popup.MinimumSize = new Size(1, 1);
             popup.Location = anchor.PointToScreen(new Point(0, anchor.Height));
-            popup.Deactivate += (s, ev) => { popup.Close(); };
+            bool suppressClose = false;
+            popup.Deactivate += (s, ev) => { if (!suppressClose) popup.Close(); };
 
             Button[] buttons = new Button[] {
                 CreateSettingsButton("Layout", Color.FromArgb(255, 220, 150, 50)),
                 CreateSettingsButton("Tiles", Color.FromArgb(255, 100, 180, 220)),
                 CreateSettingsButton("Opacity", Color.FromArgb(255, 80, 200, 80)),
-                CreateSettingsButton("Text Size", Color.FromArgb(255, 180, 130, 255)),
-                CreateSettingsButton("Presets", Color.FromArgb(255, 50, 80, 160))
+                CreateSettingsButton("Presets", Color.FromArgb(255, 50, 80, 160)),
+                CreateSettingsButton("Add Tiles", Color.FromArgb(255, 220, 180, 50))
             };
 
             buttons[0].Click += (s, ev) =>
             {
+                suppressClose = true;
+                Point settingsScreenPos = anchor.PointToScreen(Point.Empty);
                 if (currentLayout == LayoutMode.Main) ApplyLayout(LayoutMode.Vertical);
                 else if (currentLayout == LayoutMode.Vertical) ApplyLayout(LayoutMode.Horizontal);
                 else ApplyLayout(LayoutMode.Main);
+                Point newSettingsPos = anchor.PointToScreen(Point.Empty);
+                this.Location = new Point(
+                    this.Location.X + (settingsScreenPos.X - newSettingsPos.X),
+                    this.Location.Y + (settingsScreenPos.Y - newSettingsPos.Y));
+                popup.Location = anchor.PointToScreen(new Point(0, anchor.Height));
+                Point popLoc2 = popup.Location;
+                popLoc2.X = popLoc2.X - popup.Width + anchor.Width;
+                popup.Location = popLoc2;
+                popup.Show();
+                popup.BringToFront();
+                suppressClose = false;
             };
             buttons[1].Click += (s, ev) => { Point loc = popup.Location; popup.Close(); ShowTilesPopup(loc); };
             buttons[2].Click += (s, ev) => { Point loc = popup.Location; popup.Close(); ShowOpacityPopup(loc); };
-            buttons[3].Click += (s, ev) => { Point loc = popup.Location; popup.Close(); ShowTextSizePopup(loc); };
-            buttons[4].Click += (s, ev) => { Point loc = popup.Location; popup.Close(); ShowPresetsPopup(loc); };
+            buttons[3].Click += (s, ev) => { Point loc = popup.Location; popup.Close(); ShowPresetsPopup(loc); };
+            buttons[4].Click += (s, ev) => { Point loc = popup.Location; popup.Close(); ShowAddTilesPopup(loc); };
 
             int y = 4;
             int btnW = 90;
@@ -1391,6 +1394,89 @@ namespace Parsing_Plugin
             popLoc.X = popLoc.X - popW + anchor.Width;
             popup.Location = popLoc;
             popup.Show();
+        }
+
+        private void ShowAddTilesPopup(Point location)
+        {
+            if (addTilesPopup != null && !addTilesPopup.IsDisposed)
+            {
+                addTilesPopup.Close();
+                addTilesPopup = null;
+                return;
+            }
+
+            addTilesPopup = new Form();
+            addTilesPopup.FormBorderStyle = FormBorderStyle.None;
+            addTilesPopup.StartPosition = FormStartPosition.Manual;
+            addTilesPopup.BackColor = Color.FromArgb(50, 50, 50);
+            addTilesPopup.TopMost = true;
+            addTilesPopup.ShowInTaskbar = false;
+            addTilesPopup.MinimumSize = new Size(1, 1);
+            addTilesPopup.Location = location;
+            addTilesPopup.Deactivate += (s, ev) => { addTilesPopup.Close(); };
+
+            BuildAddTilesContent();
+            addTilesPopup.Show();
+        }
+
+        private void BuildAddTilesContent()
+        {
+            if (addTilesPopup == null || addTilesPopup.IsDisposed) return;
+            addTilesPopup.SuspendLayout();
+            addTilesPopup.Controls.Clear();
+
+            int y = 4;
+            int btnW = 120;
+            int btnH = 24;
+            int rowH = 26;
+
+            string[] sections = { "Tracked DPS", "Tracked HPS", "Both" };
+            ChildOverlay.ChildMode[] modes = { ChildOverlay.ChildMode.DPSOnly, ChildOverlay.ChildMode.HPSOnly, ChildOverlay.ChildMode.Both };
+
+            for (int i = 0; i < 3; i++)
+            {
+                ChildOverlay.ChildMode mode = modes[i];
+
+                Button btnAdd = CreateSettingsButton(sections[i], Color.FromArgb(255, 80, 200, 80));
+                btnAdd.Location = new Point(3, y);
+                btnAdd.Size = new Size(btnW, btnH);
+                btnAdd.Click += (s, ev) =>
+                {
+                    ChildOverlay child = new ChildOverlay(this, mode);
+                    child.StartPosition = FormStartPosition.Manual;
+                    child.Location = new Point(this.Location.X + 30 + (childOverlays.Count * 20), this.Location.Y + 30 + (childOverlays.Count * 20));
+                    child.FormClosed += (s2, ev2) =>
+                    {
+                        childOverlays.Remove(child);
+                        BuildAddTilesContent();
+                    };
+                    childOverlays.Add(child);
+                    child.Show();
+                    BuildAddTilesContent();
+                };
+                addTilesPopup.Controls.Add(btnAdd);
+                y += rowH;
+            }
+
+            y += 4;
+            Button btnCloseAll = CreateSettingsButton("Close All", Color.FromArgb(255, 200, 80, 80));
+            btnCloseAll.Location = new Point(3, y);
+            btnCloseAll.Size = new Size(btnW, btnH);
+            btnCloseAll.Enabled = childOverlays.Count > 0;
+            btnCloseAll.Click += (s, ev) =>
+            {
+                List<ChildOverlay> copy = new List<ChildOverlay>(childOverlays);
+                childOverlays.Clear();
+                foreach (ChildOverlay c in copy)
+                    c.Close();
+                BuildAddTilesContent();
+            };
+            addTilesPopup.Controls.Add(btnCloseAll);
+            y += rowH;
+
+            int popW = btnW + 6;
+            addTilesPopup.Size = new Size(popW, y + 4);
+            addTilesPopup.ResumeLayout();
         }
 
         private Button CreateSettingsButton(string text, Color borderColor)
@@ -1583,6 +1669,21 @@ namespace Parsing_Plugin
                 for (int i = 0; i < tileFontSizes.Length; i++)
                     xw.WriteElementString("FontSize_" + i, tileFontSizes[i].ToString());
 
+                xw.WriteElementString("ChildCount", childOverlays.Count.ToString());
+                for (int i = 0; i < childOverlays.Count; i++)
+                {
+                    ChildOverlay c = childOverlays[i];
+                    xw.WriteStartElement("Child_" + i);
+                    xw.WriteElementString("Mode", c.Mode.ToString());
+                    xw.WriteElementString("X", c.Location.X.ToString());
+                    xw.WriteElementString("Y", c.Location.Y.ToString());
+                    xw.WriteElementString("W", c.Size.Width.ToString());
+                    xw.WriteElementString("H", c.Size.Height.ToString());
+                    xw.WriteElementString("DPSHandle", c.DPSHandleValue ?? "");
+                    xw.WriteElementString("HPSHandle", c.HPSHandleValue ?? "");
+                    xw.WriteEndElement();
+                }
+
                 xw.WriteEndElement();
                 xw.WriteEndDocument();
                 xw.Close();
@@ -1644,7 +1745,10 @@ namespace Parsing_Plugin
                     {
                         float sz;
                         if (float.TryParse(n.InnerText, out sz))
+                        {
+                            if (sz <= 24f) sz = 48f;
                             ApplyFontSize(i, sz);
+                        }
                     }
                 }
 
@@ -1652,6 +1756,51 @@ namespace Parsing_Plugin
 
                 this.Size = new Size(w, h);
                 this.Location = new Point(lx, ly);
+
+                // Close existing child overlays
+                foreach (ChildOverlay c in new List<ChildOverlay>(childOverlays))
+                    c.Close();
+                childOverlays.Clear();
+
+                // Load child overlays
+                n = root.SelectSingleNode("ChildCount");
+                int childCount = 0;
+                if (n != null) int.TryParse(n.InnerText, out childCount);
+                for (int ci = 0; ci < childCount; ci++)
+                {
+                    XmlNode childNode = root.SelectSingleNode("Child_" + ci);
+                    if (childNode == null) continue;
+
+                    ChildOverlay.ChildMode mode = ChildOverlay.ChildMode.Both;
+                    XmlNode mn = childNode.SelectSingleNode("Mode");
+                    if (mn != null)
+                    {
+                        if (mn.InnerText == "DPSOnly") mode = ChildOverlay.ChildMode.DPSOnly;
+                        else if (mn.InnerText == "HPSOnly") mode = ChildOverlay.ChildMode.HPSOnly;
+                    }
+
+                    ChildOverlay child = new ChildOverlay(this, mode);
+                    child.StartPosition = FormStartPosition.Manual;
+
+                    int cx = this.Location.X + 30, cy = this.Location.Y + 30;
+                    int cw = 500, ch = 300;
+                    XmlNode cxn = childNode.SelectSingleNode("X"); if (cxn != null) int.TryParse(cxn.InnerText, out cx);
+                    XmlNode cyn = childNode.SelectSingleNode("Y"); if (cyn != null) int.TryParse(cyn.InnerText, out cy);
+                    XmlNode cwn = childNode.SelectSingleNode("W"); if (cwn != null) int.TryParse(cwn.InnerText, out cw);
+                    XmlNode chn = childNode.SelectSingleNode("H"); if (chn != null) int.TryParse(chn.InnerText, out ch);
+                    child.Location = new Point(cx, cy);
+                    child.Size = new Size(cw, ch);
+
+                    string cdps = "", chps = "";
+                    XmlNode cdn = childNode.SelectSingleNode("DPSHandle"); if (cdn != null) cdps = cdn.InnerText;
+                    XmlNode chn2 = childNode.SelectSingleNode("HPSHandle"); if (chn2 != null) chps = chn2.InnerText;
+                    child.SetHandles(cdps, chps);
+
+                    child.FormClosed += (s2, ev2) => { childOverlays.Remove(child); };
+                    childOverlays.Add(child);
+                    child.Show();
+                    child.Opacity = this.Opacity;
+                }
             }
             catch { }
         }
@@ -1663,9 +1812,9 @@ namespace Parsing_Plugin
             popup.FormBorderStyle = FormBorderStyle.None;
             popup.StartPosition = FormStartPosition.Manual;
             popup.BackColor = Color.FromArgb(50, 50, 50);
-            popup.Size = new Size(200, 45);
             popup.TopMost = true;
             popup.ShowInTaskbar = false;
+            popup.MinimumSize = new Size(1, 1);
             popup.Location = location;
             popup.Deactivate += (s, ev) => { popup.Close(); };
 
@@ -1682,6 +1831,7 @@ namespace Parsing_Plugin
             };
 
             popup.Controls.Add(slider);
+            popup.Size = new Size(200, 45);
             popup.Show();
         }
 
@@ -1774,7 +1924,7 @@ namespace Parsing_Plugin
 
             panelMend.Controls.Clear();
             panelMend.Controls.Add(lblMendContent);
-            panelMend.Controls.Add(lblMendEmoticon);
+            panelMend.Controls.Add(mendEmoticonWrapper);
             panelMend.Controls.Add(lblMendHeader);
 
             panelDPSHandleSingle.Controls.Clear();
@@ -1819,7 +1969,7 @@ namespace Parsing_Plugin
 
         private void ApplyMainLayout()
         {
-            this.MinimumSize = new Size(420, 400);
+            this.MinimumSize = new Size(115, 400);
             this.Size = new Size(PANEL_WIDTH * 2 + DIVIDER_WIDTH + 60, 700);
 
             bool showD = IsTileVisible(panelDPS);
@@ -1883,7 +2033,7 @@ namespace Parsing_Plugin
 
         private void ApplyVerticalLayout()
         {
-            this.MinimumSize = new Size(420, 300);
+            this.MinimumSize = new Size(115, 300);
             this.Size = new Size(PANEL_WIDTH + 40, 900);
 
             List<Panel> visible = GetVisibleTiles();
@@ -1905,7 +2055,7 @@ namespace Parsing_Plugin
 
         private void ApplyHorizontalLayout()
         {
-            this.MinimumSize = new Size(420, 200);
+            this.MinimumSize = new Size(115, 200);
             this.Size = new Size(PANEL_WIDTH * 5 + DIVIDER_WIDTH * 4, 350);
 
             List<Panel> visible = GetVisibleTiles();
@@ -1944,7 +2094,7 @@ namespace Parsing_Plugin
             return false;
         }
 
-        private EncounterData GetCurrentEncounter()
+        internal EncounterData GetCurrentEncounter()
         {
             try
             {
@@ -1991,8 +2141,8 @@ namespace Parsing_Plugin
             get
             {
                 CreateParams cp = base.CreateParams;
-                // Ensure WS_EX_TRANSPARENT is never set (prevents click-through)
                 cp.ExStyle &= ~0x20;
+                cp.ExStyle |= 0x02000000; // WS_EX_COMPOSITED - double buffer all child controls
                 return cp;
             }
         }
@@ -2047,6 +2197,7 @@ namespace Parsing_Plugin
                     break;
             }
 
+            AutoFitAllFonts();
             this.Invalidate();
         }
 
@@ -2093,6 +2244,9 @@ namespace Parsing_Plugin
         public void Shutdown()
         {
             SaveSettings();
+            foreach (ChildOverlay child in new List<ChildOverlay>(childOverlays))
+                child.Close();
+            childOverlays.Clear();
             if (updateTimer != null)
             {
                 updateTimer.Stop();
@@ -2227,7 +2381,10 @@ namespace Parsing_Plugin
                     {
                         float sz;
                         if (float.TryParse(n.InnerText, out sz))
+                        {
+                            if (sz <= 24f) sz = 48f;
                             ApplyFontSize(i, sz);
+                        }
                     }
                 }
 
@@ -2267,6 +2424,414 @@ namespace Parsing_Plugin
                 }
             }
             catch { }
+        }
+    }
+
+    public class ChildOverlay : Form
+    {
+        public enum ChildMode { DPSOnly, HPSOnly, Both }
+        public ChildMode Mode { get; private set; }
+        public string DPSHandleValue { get { return dpsHandle; } }
+        public string HPSHandleValue { get { return hpsHandle; } }
+
+        public void SetHandles(string dps, string hps)
+        {
+            if (!string.IsNullOrEmpty(dps) && txtDPSHandle != null)
+            {
+                dpsHandle = dps;
+                txtDPSHandle.Text = dps;
+                txtDPSHandle.ForeColor = TEXT_COLOR;
+                txtDPSHandle.Font = new Font("Consolas", 8F, FontStyle.Regular);
+            }
+            if (!string.IsNullOrEmpty(hps) && txtHPSHandle != null)
+            {
+                hpsHandle = hps;
+                txtHPSHandle.Text = hps;
+                txtHPSHandle.ForeColor = TEXT_COLOR;
+                txtHPSHandle.Font = new Font("Consolas", 8F, FontStyle.Regular);
+            }
+        }
+
+        private MiniOverlay parent;
+        private Timer updateTimer;
+        private Panel panelDPS, panelHPS;
+        private Label lblDPSHeader, lblHPSHeader;
+        private Label lblDPSContent, lblHPSContent;
+        private TextBox txtDPSHandle, txtHPSHandle;
+        private string dpsHandle = "";
+        private string hpsHandle = "";
+        private bool isDragging = false;
+        private Point dragOffset;
+
+        private const string PLACEHOLDER_DPS = "type DPS handle here...";
+        private const string PLACEHOLDER_HPS = "type HPS handle here...";
+
+        private static readonly Color BG_COLOR = Color.FromArgb(30, 30, 30);
+        private static readonly Color HEADER_BG = Color.FromArgb(50, 50, 50);
+        private static readonly Color DIVIDER_COLOR = Color.FromArgb(70, 70, 70);
+        private static readonly Color TEXT_COLOR = Color.FromArgb(230, 230, 230);
+        private static readonly Color PLACEHOLDER_COLOR = Color.FromArgb(120, 120, 120);
+        private static readonly Color MY_DPS_ACCENT = Color.FromArgb(255, 100, 100);
+        private static readonly Color MY_HPS_ACCENT = Color.FromArgb(120, 230, 120);
+
+        public ChildOverlay(MiniOverlay parent, ChildMode mode = ChildMode.Both)
+        {
+            this.parent = parent;
+            this.Mode = mode;
+            this.FormBorderStyle = FormBorderStyle.None;
+            this.BackColor = BG_COLOR;
+            this.TopMost = true;
+            this.ShowInTaskbar = false;
+            this.DoubleBuffered = true;
+
+            bool showDPS = mode == ChildMode.DPSOnly || mode == ChildMode.Both;
+            bool showHPS = mode == ChildMode.HPSOnly || mode == ChildMode.Both;
+
+            if (mode == ChildMode.Both)
+            {
+                this.Size = new Size(500, 300);
+                this.MinimumSize = new Size(200, 150);
+            }
+            else
+            {
+                this.Size = new Size(250, 300);
+                this.MinimumSize = new Size(150, 150);
+            }
+
+            List<Control> dragTargets = new List<Control>();
+
+            if (showDPS)
+            {
+                panelDPS = new Panel();
+                panelDPS.BackColor = Color.Transparent;
+
+                lblDPSHeader = new Label();
+                lblDPSHeader.Text = "Tracked DPS";
+                lblDPSHeader.Dock = DockStyle.Top;
+                lblDPSHeader.Height = 20;
+                lblDPSHeader.BackColor = HEADER_BG;
+                lblDPSHeader.ForeColor = MY_DPS_ACCENT;
+                lblDPSHeader.Font = new Font("Consolas", 9F, FontStyle.Bold);
+                lblDPSHeader.TextAlign = ContentAlignment.MiddleCenter;
+
+                txtDPSHandle = CreateHandleTextBox(PLACEHOLDER_DPS, true);
+
+                lblDPSContent = new Label();
+                lblDPSContent.Dock = DockStyle.Fill;
+                lblDPSContent.ForeColor = TEXT_COLOR;
+                lblDPSContent.Font = new Font("Consolas", 8.5f);
+                lblDPSContent.BackColor = Color.Transparent;
+                lblDPSContent.Text = "  No data";
+                lblDPSContent.Padding = new Padding(4, 4, 4, 4);
+
+                panelDPS.Controls.Add(lblDPSContent);
+                panelDPS.Controls.Add(txtDPSHandle);
+                panelDPS.Controls.Add(lblDPSHeader);
+
+                dragTargets.Add(panelDPS);
+                dragTargets.Add(lblDPSHeader);
+                dragTargets.Add(lblDPSContent);
+            }
+
+            if (showHPS)
+            {
+                panelHPS = new Panel();
+                panelHPS.BackColor = Color.Transparent;
+
+                lblHPSHeader = new Label();
+                lblHPSHeader.Text = "Tracked HPS";
+                lblHPSHeader.Dock = DockStyle.Top;
+                lblHPSHeader.Height = 20;
+                lblHPSHeader.BackColor = HEADER_BG;
+                lblHPSHeader.ForeColor = MY_HPS_ACCENT;
+                lblHPSHeader.Font = new Font("Consolas", 9F, FontStyle.Bold);
+                lblHPSHeader.TextAlign = ContentAlignment.MiddleCenter;
+
+                txtHPSHandle = CreateHandleTextBox(PLACEHOLDER_HPS, false);
+
+                lblHPSContent = new Label();
+                lblHPSContent.Dock = DockStyle.Fill;
+                lblHPSContent.ForeColor = TEXT_COLOR;
+                lblHPSContent.Font = new Font("Consolas", 8.5f);
+                lblHPSContent.BackColor = Color.Transparent;
+                lblHPSContent.Text = "  No data";
+                lblHPSContent.Padding = new Padding(4, 4, 4, 4);
+
+                panelHPS.Controls.Add(lblHPSContent);
+                panelHPS.Controls.Add(txtHPSHandle);
+                panelHPS.Controls.Add(lblHPSHeader);
+
+                dragTargets.Add(panelHPS);
+                dragTargets.Add(lblHPSHeader);
+                dragTargets.Add(lblHPSContent);
+            }
+
+            Button btnClose = new Button();
+            btnClose.Text = "X";
+            btnClose.FlatStyle = FlatStyle.Flat;
+            btnClose.FlatAppearance.BorderColor = Color.FromArgb(200, 80, 80);
+            btnClose.FlatAppearance.BorderSize = 1;
+            btnClose.BackColor = Color.FromArgb(60, 60, 60);
+            btnClose.ForeColor = Color.FromArgb(200, 80, 80);
+            btnClose.Font = new Font("Consolas", 8F, FontStyle.Bold);
+            btnClose.Size = new Size(22, 20);
+            btnClose.Cursor = Cursors.Hand;
+            btnClose.Click += (s, ev) => { this.Close(); };
+
+            Panel closePanel = new Panel();
+            closePanel.Dock = DockStyle.Top;
+            closePanel.Height = 22;
+            closePanel.BackColor = HEADER_BG;
+            btnClose.Dock = DockStyle.Right;
+            closePanel.Controls.Add(btnClose);
+
+            Panel gripPanel = new Panel();
+            gripPanel.Size = new Size(16, 16);
+            gripPanel.BackColor = Color.FromArgb(45, 45, 45);
+            gripPanel.Cursor = Cursors.SizeNWSE;
+            gripPanel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            bool isResizing = false;
+            Point resizeStart = Point.Empty;
+            Size resizeOrigSize = Size.Empty;
+            gripPanel.MouseDown += (s, ev) =>
+            {
+                if (ev.Button == MouseButtons.Left)
+                {
+                    isResizing = true;
+                    resizeStart = gripPanel.PointToScreen(ev.Location);
+                    resizeOrigSize = this.Size;
+                }
+            };
+            gripPanel.MouseMove += (s, ev) =>
+            {
+                if (isResizing)
+                {
+                    Point cur = gripPanel.PointToScreen(ev.Location);
+                    int newW = resizeOrigSize.Width + (cur.X - resizeStart.X);
+                    int newH = resizeOrigSize.Height + (cur.Y - resizeStart.Y);
+                    if (newW < this.MinimumSize.Width) newW = this.MinimumSize.Width;
+                    if (newH < this.MinimumSize.Height) newH = this.MinimumSize.Height;
+                    this.Size = new Size(newW, newH);
+                }
+            };
+            gripPanel.MouseUp += (s, ev) => { isResizing = false; };
+            typeof(Panel).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(gripPanel, true, null);
+            gripPanel.Resize += (s, ev) => { gripPanel.Invalidate(); };
+            gripPanel.Paint += (s, pe) =>
+            {
+                int gx = gripPanel.Width - 16;
+                int gy = 2;
+                using (Pen p = new Pen(Color.FromArgb(140, 140, 140), 2))
+                {
+                    for (int line = 0; line < 4; line++)
+                    {
+                        pe.Graphics.DrawLine(p, gx + line * 4, gripPanel.Height - 2, gripPanel.Width - 2, gy + line * 4);
+                    }
+                }
+            };
+
+            if (mode == ChildMode.Both)
+            {
+                Panel divider = new Panel();
+                divider.Dock = DockStyle.Left;
+                divider.Width = 2;
+                divider.BackColor = DIVIDER_COLOR;
+
+                panelDPS.Dock = DockStyle.Left;
+                panelDPS.Width = this.ClientSize.Width / 2 - 1;
+                panelHPS.Dock = DockStyle.Fill;
+
+                this.Controls.Add(panelHPS);
+                this.Controls.Add(divider);
+                this.Controls.Add(panelDPS);
+
+                this.Resize += (s, ev) => { panelDPS.Width = this.ClientSize.Width / 2 - 1; };
+            }
+            else if (mode == ChildMode.DPSOnly)
+            {
+                panelDPS.Dock = DockStyle.Fill;
+                this.Controls.Add(panelDPS);
+            }
+            else
+            {
+                panelHPS.Dock = DockStyle.Fill;
+                this.Controls.Add(panelHPS);
+            }
+
+            gripPanel.Location = new Point(this.ClientSize.Width - 16, this.ClientSize.Height - 16);
+            this.Controls.Add(gripPanel);
+            gripPanel.BringToFront();
+            this.Controls.Add(closePanel);
+            this.Resize += (s2, ev2) => { gripPanel.Location = new Point(this.ClientSize.Width - 16, this.ClientSize.Height - 16); AutoFitFonts(); };
+
+            foreach (Control c in dragTargets)
+            {
+                c.MouseDown += (s, ev) =>
+                {
+                    if (ev.Button == MouseButtons.Left)
+                    {
+                        isDragging = true;
+                        dragOffset = ev.Location;
+                        closePanel.Focus();
+                    }
+                };
+                c.MouseMove += (s, ev) => { if (isDragging) { Point p = PointToScreen(ev.Location); this.Location = new Point(p.X - dragOffset.X, p.Y - dragOffset.Y); } };
+                c.MouseUp += (s, ev) => { isDragging = false; };
+            }
+
+            updateTimer = new Timer();
+            updateTimer.Interval = 1000;
+            updateTimer.Tick += (s, ev) => UpdateData();
+            updateTimer.Start();
+        }
+
+        private TextBox CreateHandleTextBox(string placeholder, bool isDPS)
+        {
+            TextBox txt = new TextBox();
+            txt.Dock = DockStyle.Top;
+            txt.Height = 20;
+            txt.BackColor = Color.FromArgb(40, 40, 40);
+            txt.ForeColor = PLACEHOLDER_COLOR;
+            txt.Font = new Font("Consolas", 8F, FontStyle.Italic);
+            txt.Text = placeholder;
+            txt.BorderStyle = BorderStyle.FixedSingle;
+
+            txt.Enter += (s, ev) =>
+            {
+                if (txt.Text == placeholder)
+                {
+                    txt.Text = "";
+                    txt.ForeColor = TEXT_COLOR;
+                    txt.Font = new Font("Consolas", 8F, FontStyle.Regular);
+                }
+            };
+            txt.Leave += (s, ev) =>
+            {
+                if (string.IsNullOrEmpty(txt.Text))
+                {
+                    txt.Text = placeholder;
+                    txt.ForeColor = PLACEHOLDER_COLOR;
+                    txt.Font = new Font("Consolas", 8F, FontStyle.Italic);
+                }
+            };
+            txt.TextChanged += (s, ev) =>
+            {
+                if (txt.Text != placeholder)
+                {
+                    if (isDPS) dpsHandle = txt.Text;
+                    else hpsHandle = txt.Text;
+                }
+            };
+
+            return txt;
+        }
+
+        private void UpdateData()
+        {
+            if (!this.Visible || parent == null) return;
+
+            EncounterData encounter = parent.GetCurrentEncounter();
+            if (encounter == null)
+            {
+                if (lblDPSContent != null) lblDPSContent.Text = "  No data";
+                if (lblHPSContent != null) lblHPSContent.Text = "  No data";
+                return;
+            }
+
+            List<CombatantData> combatants = new List<CombatantData>();
+            try
+            {
+                foreach (CombatantData cd in encounter.Items.Values)
+                    combatants.Add(cd);
+            }
+            catch { }
+
+            if (lblDPSContent != null)
+            {
+                CombatantData dpsChar = parent.FindMyCharacter(combatants, dpsHandle);
+                if (dpsChar != null)
+                {
+                    lblDPSHeader.Text = dpsChar.Name.Trim() + "'s Tracked DPS";
+                    lblDPSContent.Text = parent.FormatPowerBreakdown(dpsChar, true, encounter, lblDPSContent.Width);
+                }
+                else
+                {
+                    lblDPSHeader.Text = "Tracked DPS";
+                    string hint = string.IsNullOrEmpty(dpsHandle) ? " (set DPS handle)" : "";
+                    lblDPSContent.Text = "  No char found" + hint;
+                }
+            }
+
+            if (lblHPSContent != null)
+            {
+                CombatantData hpsChar = parent.FindMyCharacter(combatants, hpsHandle);
+                if (hpsChar != null)
+                {
+                    lblHPSHeader.Text = hpsChar.Name.Trim() + "'s Tracked HPS";
+                    lblHPSContent.Text = parent.FormatPowerBreakdown(hpsChar, false, encounter, lblHPSContent.Width);
+                }
+                else
+                {
+                    lblHPSHeader.Text = "Tracked HPS";
+                    string hint = string.IsNullOrEmpty(hpsHandle) ? " (set HPS handle)" : "";
+                    lblHPSContent.Text = "  No char found" + hint;
+                }
+            }
+
+            AutoFitFonts();
+        }
+
+        private float maxFontSize = 48f;
+
+        private void AutoFitLabel(Label lbl, bool isDPS)
+        {
+            if (lbl == null || string.IsNullOrEmpty(lbl.Text)) return;
+            int rawWidth = lbl.Width - lbl.Padding.Left - lbl.Padding.Right;
+            int availWidth = rawWidth - Math.Max(30, (int)(rawWidth * 0.08));
+            if (availWidth < 20) { lbl.Font = new Font("Consolas", maxFontSize); return; }
+
+            string longestLine = "";
+            foreach (string line in lbl.Text.Split('\n'))
+                if (line.Length > longestLine.Length) longestLine = line;
+            if (longestLine.Length == 0) { lbl.Font = new Font("Consolas", maxFontSize); return; }
+
+            float bestSize = 3f;
+            try
+            {
+                for (float sz = maxFontSize; sz >= 3f; sz -= 0.5f)
+                {
+                    using (Font f = new Font("Consolas", sz))
+                    {
+                        int w = TextRenderer.MeasureText(longestLine, f, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+                        if (w <= availWidth) { bestSize = sz; break; }
+                    }
+                }
+            }
+            catch { bestSize = maxFontSize; }
+            if (Math.Abs(lbl.Font.Size - bestSize) > 0.1f)
+                lbl.Font = new Font("Consolas", bestSize);
+        }
+
+        private void AutoFitFonts()
+        {
+            AutoFitLabel(lblDPSContent, true);
+            AutoFitLabel(lblHPSContent, false);
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x02000000; // WS_EX_COMPOSITED
+                return cp;
+            }
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (updateTimer != null) { updateTimer.Stop(); updateTimer.Dispose(); }
+            base.OnFormClosing(e);
         }
     }
 }
