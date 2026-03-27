@@ -1093,6 +1093,7 @@ namespace Parsing_Plugin
             long total = 0;
             foreach (CombatantData cd in combatants)
             {
+                if (cd.Name.StartsWith("[")) continue;
                 if (isDPS)
                     total += cd.Damage;
                 else if (cd.Healed > 0)
@@ -1112,6 +1113,8 @@ namespace Parsing_Plugin
             foreach (CombatantData cd in combatants)
             {
                 if (count >= 20) break;
+
+                if (cd.Name.StartsWith("[")) continue;
 
                 string name = ClipText(cd.Name, wName);
 
