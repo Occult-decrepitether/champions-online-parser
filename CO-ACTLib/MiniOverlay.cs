@@ -775,6 +775,23 @@ namespace Parsing_Plugin
             if (lbl.Text != text) lbl.Text = text;
         }
 
+        public void EnsureOnScreen()
+        {
+            Point center = new Point(this.Left + this.Width / 2, this.Top + this.Height / 2);
+            bool onScreen = false;
+            foreach (Screen s in Screen.AllScreens)
+            {
+                if (s.WorkingArea.Contains(center)) { onScreen = true; break; }
+            }
+            if (!onScreen) this.Location = new Point(100, 100);
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (this.Visible) EnsureOnScreen();
+        }
+
         private void UpdateOverlayData()
         {
             if (!this.Visible) return;

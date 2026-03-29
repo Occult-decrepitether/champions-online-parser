@@ -394,7 +394,10 @@ namespace Parsing_Plugin
                 {
                     ActGlobals.oFormMiniParse.Hide();
                     if (miniOverlay != null)
+                    {
                         miniOverlay.Show();
+                        miniOverlay.EnsureOnScreen();
+                    }
                 }
             }
             catch { }
