@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace Parsing_Plugin
+﻿namespace Parsing_Plugin
 {
     class Constants
     {

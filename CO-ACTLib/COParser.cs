@@ -16,8 +16,8 @@ using System.Xml;
 [assembly: AssemblyProduct("CO-ACTLib :8~^.)")]
 [assembly: AssemblyTrademark(":8~^.)")]
 [assembly: AssemblyCulture("en-US")]
-[assembly: AssemblyVersion("3.1.3.0")]
-[assembly: AssemblyFileVersion("3.1.3.0")]
+[assembly: AssemblyVersion("3.1.5.0")]
+[assembly: AssemblyFileVersion("3.1.5.0")]
 
 /* Version History
  *
@@ -75,15 +75,11 @@ namespace Parsing_Plugin
     {
         private static CultureInfo cultureDisplay = new CultureInfo(Constants.Culture);
         private object locker = new object();
-        private DateTime lastCombatStart = DateTime.MinValue;
-        private DateTime lastCombatEnd = DateTime.MinValue;
         public static List<string> AllyList;
         public static string BossList;
-        private string charName = "";
-        // Maps handle (e.g. "@username") to display name (e.g. "CharName")
+
         private static Dictionary<string, string> handleToName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        // Mend tracker
         private static Dictionary<string, MendData> mendTracking = new Dictionary<string, MendData>();
         private static object mendLock = new object();
 
@@ -195,18 +191,14 @@ namespace Parsing_Plugin
             this.label_Help = new System.Windows.Forms.Label();
             this.groupBox_Help.SuspendLayout();
             this.SuspendLayout();
-            // 
-            // groupBox_Combatants
-            // 
+
             this.groupBox_Combatants.Location = new System.Drawing.Point(8, 60);
             this.groupBox_Combatants.Name = "groupBox_Combatants";
             this.groupBox_Combatants.Size = new System.Drawing.Size(370, 178);
             this.groupBox_Combatants.TabIndex = 0;
             this.groupBox_Combatants.TabStop = false;
             this.groupBox_Combatants.Text = "Combatants";
-            //
-            // label1
-            // 
+
             this.label1.AutoSize = true;
             this.label1.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Underline))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.label1.Location = new System.Drawing.Point(12, 23);
@@ -215,9 +207,7 @@ namespace Parsing_Plugin
             this.label1.TabIndex = 0;
             this.label1.Text = "CO Parser Plugin Options";
             this.label1.MouseHover += new System.EventHandler(this.label1_MouseHover);
-            // 
-            // checkBox_UseAccountName
-            // 
+
             this.checkBox_UseAccountName.AutoSize = true;
             this.checkBox_UseAccountName.Location = new System.Drawing.Point(15, 86);
             this.checkBox_UseAccountName.Name = "checkBox_UseAccountName";
@@ -226,9 +216,7 @@ namespace Parsing_Plugin
             this.checkBox_UseAccountName.Text = "Show account with player character name";
             this.checkBox_UseAccountName.UseVisualStyleBackColor = true;
             this.checkBox_UseAccountName.MouseHover += new System.EventHandler(this.checkBox_OnlyPlayers_MouseHover);
-            //
-            // checkBox_ShowOverlay
-            //
+
             this.checkBox_ShowOverlay.AutoSize = true;
             this.checkBox_ShowOverlay.Checked = true;
             this.checkBox_ShowOverlay.CheckState = System.Windows.Forms.CheckState.Checked;
@@ -240,26 +228,20 @@ namespace Parsing_Plugin
             this.checkBox_ShowOverlay.UseVisualStyleBackColor = true;
             this.checkBox_ShowOverlay.CheckedChanged += new System.EventHandler(this.checkBox_ShowOverlay_CheckedChanged);
             this.checkBox_ShowOverlay.MouseHover += new System.EventHandler(this.checkBox_ShowOverlay_MouseHover);
-            //
-            // label_CharName
-            //
+
             this.label_CharName.AutoSize = true;
             this.label_CharName.Location = new System.Drawing.Point(12, 130);
             this.label_CharName.Name = "label_CharName";
             this.label_CharName.Size = new System.Drawing.Size(272, 13);
             this.label_CharName.TabIndex = 0;
             this.label_CharName.Text = "Your Handle (e.g. @username):";
-            //
-            // txt_CharName
-            //
+
             this.txt_CharName.Location = new System.Drawing.Point(28, 148);
             this.txt_CharName.Name = "txt_CharName";
             this.txt_CharName.Width = 200;
             this.txt_CharName.Height = 20;
             this.txt_CharName.TabIndex = 7;
-            //
-            // label_Bosses
-            //
+
             this.label_Bosses.AutoSize = true;
             this.label_Bosses.Location = new System.Drawing.Point(12, 180);
             this.label_Bosses.Name = "label_Bosses";
@@ -267,9 +249,7 @@ namespace Parsing_Plugin
             this.label_Bosses.TabIndex = 0;
             this.label_Bosses.Text = "Custom Boss NPC List:";
             this.label_Bosses.MouseHover += new System.EventHandler(this.txt_Bosses_MouseHover);
-            // 
-            // textbox_Bosses
-            // 
+
             this.txt_Bosses.Location = new System.Drawing.Point(28, 200);
             this.txt_Bosses.Name = "txt_Bosses";
             this.txt_Bosses.Multiline = true;
@@ -278,10 +258,7 @@ namespace Parsing_Plugin
             this.txt_Bosses.ScrollBars = ScrollBars.Vertical;
             this.txt_Bosses.TabIndex = 5;
             this.txt_Bosses.MouseHover += new System.EventHandler(this.txt_Bosses_MouseHover);
-            
-            // 
-            // groupBox_Help
-            // 
+
             this.groupBox_Help.Controls.Add(this.label_Help);
             this.groupBox_Help.Location = new System.Drawing.Point(8, 400);
             this.groupBox_Help.Name = "groupBox_Help";
@@ -289,18 +266,14 @@ namespace Parsing_Plugin
             this.groupBox_Help.TabIndex = 24;
             this.groupBox_Help.TabStop = false;
             this.groupBox_Help.Text = "Help Info";
-            // 
-            // label_Help
-            // 
+
             this.label_Help.AutoSize = true;
             this.label_Help.Location = new System.Drawing.Point(6, 16);
             this.label_Help.Name = "label_Help";
             this.label_Help.Size = new System.Drawing.Size(272, 13);
             this.label_Help.TabIndex = 0;
             this.label_Help.Text = "Mouse-over an item to view a more detailed explanation.";
-            // 
-            // CO_ACTLib
-            // 
+
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.Controls.Add(this.groupBox_Help);
@@ -318,7 +291,6 @@ namespace Parsing_Plugin
             this.groupBox_Help.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
-
         }
 
         public void InitPlugin(TabPage pluginScreenSpace, Label pluginStatusText)
@@ -329,26 +301,20 @@ namespace Parsing_Plugin
                 if (ActGlobals.oFormActMain.OptionsTreeView.Nodes[i].Text == "CO Parsing")
                     dcIndex = i;
             }
-            if (dcIndex != -1)
-            {
-                optionsNode = ActGlobals.oFormActMain.OptionsTreeView.Nodes[dcIndex].Nodes.Add("General");
-                ActGlobals.oFormActMain.OptionsControlSets.Add(@"CO Parsing\General", new List<Control> { this });
-                Label lblConfig = new Label();
-                lblConfig.AutoSize = true;
-                lblConfig.Text = "Find the applicable options in the Options tab, CO Parsing section.";
-                pluginScreenSpace.Controls.Add(lblConfig);
-            }
-            else
+            if (dcIndex == -1)
             {
                 ActGlobals.oFormActMain.OptionsTreeView.Nodes.Add("CO Parsing");
                 dcIndex = ActGlobals.oFormActMain.OptionsTreeView.Nodes.Count - 1;
-                optionsNode = ActGlobals.oFormActMain.OptionsTreeView.Nodes[dcIndex].Nodes.Add("General");
-                ActGlobals.oFormActMain.OptionsControlSets.Add(@"CO Parsing\General", new List<Control> { this });
-                Label lblConfig = new Label();
-                lblConfig.AutoSize = true;
-                lblConfig.Text = "Find the applicable options in the Options tab, CO Parsing section.";
-                pluginScreenSpace.Controls.Add(lblConfig);
             }
+
+            optionsNode = ActGlobals.oFormActMain.OptionsTreeView.Nodes[dcIndex].Nodes.Add("General");
+            ActGlobals.oFormActMain.OptionsControlSets.Add(@"CO Parsing\General", new List<Control> { this });
+
+            Label lblConfig = new Label();
+            lblConfig.AutoSize = true;
+            lblConfig.Text = "Find the applicable options in the Options tab, CO Parsing section.";
+            pluginScreenSpace.Controls.Add(lblConfig);
+
             ActGlobals.oFormActMain.OptionsTreeView.Nodes[dcIndex].Expand();
 
             xmlSettings = new SettingsSerializer(this);
@@ -369,7 +335,6 @@ namespace Parsing_Plugin
             miniOverlay = new MiniOverlay();
             miniOverlay.SetHandle(txt_CharName.Text);
             txt_CharName.TextChanged += (s, ev) => { if (miniOverlay != null) miniOverlay.SetHandle(txt_CharName.Text); };
-            miniOverlay.HandleChanged += (s, ev) => { txt_CharName.Text = miniOverlay.CharacterHandle ?? ""; };
             if (checkBox_ShowOverlay.Checked)
                 miniOverlay.Show();
 
@@ -383,7 +348,6 @@ namespace Parsing_Plugin
             catch { }
 
             pluginStatusText.Text = Constants.OnLoadStatusText;
-
         }
 
         private void MiniParse_VisibleChanged(object sender, EventArgs e)
@@ -408,8 +372,6 @@ namespace Parsing_Plugin
             ResetMendData();
             lock (locker)
             {
-                lastCombatEnd = encounterInfo.encounter.EndTime;
-
                 if (encounterInfo.encounter.GetAllies().Count == 0)
                 {
                     if (AllyList != null && AllyList.Count > 0)
@@ -446,26 +408,10 @@ namespace Parsing_Plugin
             if (!AllyList.Contains(Name)) AllyList.Add(Name);
         }
 
-        private string GetCharName()
-        {
-            if (charName != null && charName.Length > 0)
-            {
-                return charName;
-            }
-
-            if (ActGlobals.charName != null && ActGlobals.charName.Length > 0)
-            {
-                return ActGlobals.charName;
-            }
-
-            return "";
-        }
-
         private void SetupDataTypes()
         {
             try
             {
-
                 EncounterData.ColumnDefs.Clear();
                 CombatantData.ColumnDefs.Clear();
                 DamageTypeData.ColumnDefs.Clear();
@@ -654,8 +600,6 @@ namespace Parsing_Plugin
                     int healAmount = (int)(v.magnitude * -1);
                     lock (mendLock)
                     {
-                        // Mend can only be active from one player at a time
-                        // If the applicator changed, clear old data and start fresh
                         if (!mendTracking.ContainsKey(v.ownerDisplay))
                         {
                             mendTracking.Clear();
@@ -672,15 +616,11 @@ namespace Parsing_Plugin
                     }
                 }
                 catch { }
-            }
 
-            if (v.eventDisplay == "Mend" && v.magnitude < 0 && v.type.Contains("HitPoints"))
-            {
                 v.targetDisplay = v.ownerDisplay;
             }
 
-            if (!v.ignore) { ProcessEvent(v, logInfo); }
-
+            if (!v.ignore) ProcessEvent(v, logInfo);
         }
 
         private void ProcessEvent(COEvent v, LogLineEventArgs logInfo)
@@ -759,8 +699,8 @@ namespace Parsing_Plugin
             }
 
             BossList = txt_Bosses.Text.Trim();
-
         }
+
         public void SaveSettings()
         {
             FileStream fs = new FileStream(settingsFile, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);

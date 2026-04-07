@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.IO;
-using System.Linq;
 using System.Net;
 using System.Windows.Forms;
 using System.Xml;
@@ -42,6 +40,19 @@ namespace Parsing_Plugin
         private Panel mendEmoticonWrapper;
         private Panel dividerMend;
 
+        private Panel panelDTPS;
+        private Label lblDTPSHeader;
+        private Label lblDTPSContent;
+        private Label lblDTPSEncTitle;
+
+        private Panel panelMyDTPS;
+        private Label lblMyDTPSHeader;
+        private Label lblMyDTPSContent;
+        private Panel panelDTPSHandleSingle;
+        private TextBox txtDTPSHandle;
+        public string DTPSHandle { get; set; }
+        private const string PLACEHOLDER_DTPS = "name or @handle...";
+
         private Panel panelButtonBar;
         private Label lblHandleTracking;
 
@@ -74,24 +85,14 @@ namespace Parsing_Plugin
 
         public string DPSHandle { get; set; }
         public string HPSHandle { get; set; }
-        // Keep CharacterHandle for backward compat with COParser settings
-        public string CharacterHandle
-        {
-            get { return DPSHandle; }
-            set { DPSHandle = value; HPSHandle = value; }
-        }
-        public event EventHandler HandleChanged;
-        private void OnHandleChanged()
-        {
-            if (HandleChanged != null) HandleChanged(this, EventArgs.Empty);
-        }
+
         public void SetHandle(string handle)
         {
             SetDPSHandle(handle);
             SetHPSHandle(handle);
         }
-        private const string PLACEHOLDER_DPS = "type DPS handle here...";
-        private const string PLACEHOLDER_HPS = "type HPS handle here...";
+        private const string PLACEHOLDER_DPS = "name or @handle...";
+        private const string PLACEHOLDER_HPS = "name or @handle...";
         private static readonly Color PLACEHOLDER_COLOR = Color.FromArgb(120, 120, 120);
 
         private void SetPlaceholder(TextBox txt, string text)
@@ -131,13 +132,28 @@ namespace Parsing_Plugin
                 SetPlaceholder(txtHPSHandle, PLACEHOLDER_HPS);
             }
         }
+        public void SetDTPSHandle(string handle)
+        {
+            DTPSHandle = handle;
+            if (txtDTPSHandle == null) return;
+            if (!string.IsNullOrEmpty(handle))
+            {
+                txtDTPSHandle.Text = handle;
+                txtDTPSHandle.ForeColor = TEXT_COLOR;
+                txtDTPSHandle.Font = new Font("Consolas", 8F, FontStyle.Regular);
+            }
+            else
+            {
+                SetPlaceholder(txtDTPSHandle, PLACEHOLDER_DTPS);
+            }
+        }
 
         private const int PANEL_WIDTH = 220;
         private const int HEADER_HEIGHT = 20;
         private const int DIVIDER_WIDTH = 2;
         private const int UPDATE_INTERVAL_MS = 1000;
 
-        private const string CURRENT_VERSION = "3.1.3";
+        private const string CURRENT_VERSION = "3.1.5";
         private const string UPDATE_API_URL = "https://api.github.com/repos/Occult-decrepitether/champions-online-parser/releases/latest";
         private bool updateAvailable = false;
         private string latestVersion = "";
@@ -146,18 +162,24 @@ namespace Parsing_Plugin
         private float pulsePhase = 0f;
         private Button btnUpdateRef = null;
 
-        private static readonly Color BG_COLOR = Color.FromArgb(220, 30, 30, 30);
+        private int maxRowsDPS = 0;
+        private int maxRowsHPS = 0;
+        private int maxRowsDTPS = 0;
+        private int maxRowsTrackedDPS = 0;
+        private int maxRowsTrackedHPS = 0;
+        private int maxRowsTrackedDTPS = 0;
+        private const string PLACEHOLDER_ROWS = "type 0 to show all";
+
         private static readonly Color HEADER_BG = Color.FromArgb(255, 50, 50, 50);
         private static readonly Color DIVIDER_COLOR = Color.FromArgb(255, 70, 70, 70);
         private static readonly Color TEXT_COLOR = Color.FromArgb(255, 230, 230, 230);
-        private static readonly Color HEADER_TEXT = Color.FromArgb(255, 200, 200, 200);
         private static readonly Color DPS_ACCENT = Color.FromArgb(255, 220, 60, 60);
         private static readonly Color HPS_ACCENT = Color.FromArgb(255, 80, 200, 80);
-        private static readonly Color BAR_DPS_COLOR = Color.FromArgb(80, 220, 150, 50);
-        private static readonly Color BAR_HPS_COLOR = Color.FromArgb(80, 80, 200, 80);
         private static readonly Color ENC_TITLE_COLOR = Color.FromArgb(255, 160, 160, 160);
         private static readonly Color MY_DPS_ACCENT = Color.FromArgb(255, 255, 100, 100);
         private static readonly Color MY_HPS_ACCENT = Color.FromArgb(255, 120, 230, 120);
+        private static readonly Color DTPS_ACCENT = Color.FromArgb(255, 80, 220, 220);
+        private static readonly Color MY_DTPS_ACCENT = Color.FromArgb(255, 120, 240, 240);
 
         public MiniOverlay()
         {
@@ -175,25 +197,13 @@ namespace Parsing_Plugin
             this.TopMost = true;
             this.ShowInTaskbar = true;
             this.BackColor = Color.FromArgb(30, 30, 30);
+            this.Padding = new Padding(0, 0, 0, 16);
             this.Opacity = 1.0;
             this.DoubleBuffered = true;
             this.SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
             this.Text = "CO Mini Parse";
 
-            try
-            {
-                Guid IID_IPropertyStore = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
-                object store;
-                SHGetPropertyStoreForWindow(this.Handle, ref IID_IPropertyStore, out store);
-                if (store != null)
-                {
-                    PropVariant pv = new PropVariant("CO.MiniParse.Overlay");
-                    PropertyKey pk = new PropertyKey(new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 5);
-                    ((IPropertyStore)store).SetValue(ref pk, ref pv);
-                    System.Runtime.InteropServices.Marshal.ReleaseComObject(store);
-                }
-            }
-            catch { }
+            SetAppUserModelId(this.Handle, "CO.MiniParse.Overlay");
 
             try
             {
@@ -213,8 +223,6 @@ namespace Parsing_Plugin
                 this.Icon = Icon.FromHandle(bmp.GetHicon());
             }
             catch { }
-            this.MinimumSize = new Size(115, 400);
-
 
             panelTopRow = new Panel();
             panelTopRow.Dock = DockStyle.Top;
@@ -325,6 +333,27 @@ namespace Parsing_Plugin
             dividerMend.Height = DIVIDER_WIDTH;
             dividerMend.BackColor = DIVIDER_COLOR;
 
+            panelDTPS = new Panel();
+            panelDTPS.Dock = DockStyle.Top;
+            panelDTPS.Height = 120;
+            panelDTPS.BackColor = Color.Transparent;
+
+            lblDTPSHeader = CreateHeaderLabel("DTPS", DTPS_ACCENT);
+            lblDTPSHeader.Dock = DockStyle.Top;
+            lblDTPSHeader.Height = HEADER_HEIGHT;
+            lblDTPSHeader.BackColor = HEADER_BG;
+
+            lblDTPSEncTitle = CreateEncTitleLabel();
+            lblDTPSEncTitle.Dock = DockStyle.Top;
+            lblDTPSEncTitle.Height = 16;
+
+            lblDTPSContent = CreateContentLabel();
+            lblDTPSContent.Dock = DockStyle.Fill;
+
+            panelDTPS.Controls.Add(lblDTPSContent);
+            panelDTPS.Controls.Add(lblDTPSEncTitle);
+            panelDTPS.Controls.Add(lblDTPSHeader);
+
             panelBottomRow = new Panel();
             panelBottomRow.Dock = DockStyle.Fill;
             panelBottomRow.BackColor = Color.Transparent;
@@ -369,6 +398,58 @@ namespace Parsing_Plugin
             panelBottomRow.Controls.Add(dividerBottom);
             panelBottomRow.Controls.Add(panelMyDPS);
 
+            panelMyDTPS = new Panel();
+            panelMyDTPS.Dock = DockStyle.Top;
+            panelMyDTPS.Height = 120;
+            panelMyDTPS.BackColor = Color.Transparent;
+
+            lblMyDTPSHeader = CreateHeaderLabel("Tracked DTPS", MY_DTPS_ACCENT);
+            lblMyDTPSHeader.Dock = DockStyle.Top;
+            lblMyDTPSHeader.Height = HEADER_HEIGHT;
+            lblMyDTPSHeader.BackColor = HEADER_BG;
+
+            lblMyDTPSContent = CreateContentLabel();
+            lblMyDTPSContent.Dock = DockStyle.Fill;
+
+            panelMyDTPS.Controls.Add(lblMyDTPSContent);
+            panelMyDTPS.Controls.Add(lblMyDTPSHeader);
+
+            panelDTPSHandleSingle = new Panel();
+            panelDTPSHandleSingle.Dock = DockStyle.Top;
+            panelDTPSHandleSingle.Height = 22;
+            panelDTPSHandleSingle.BackColor = HEADER_BG;
+            panelDTPSHandleSingle.Padding = new Padding(2);
+
+            txtDTPSHandle = new TextBox();
+            txtDTPSHandle.BorderStyle = BorderStyle.FixedSingle;
+            txtDTPSHandle.BackColor = Color.FromArgb(40, 40, 40);
+            txtDTPSHandle.Font = new Font("Consolas", 8F, FontStyle.Italic);
+            txtDTPSHandle.ForeColor = PLACEHOLDER_COLOR;
+            txtDTPSHandle.Text = PLACEHOLDER_DTPS;
+            txtDTPSHandle.Dock = DockStyle.Fill;
+            txtDTPSHandle.Enter += (s, ev) =>
+            {
+                if (txtDTPSHandle.Text == PLACEHOLDER_DTPS)
+                {
+                    txtDTPSHandle.Text = "";
+                    txtDTPSHandle.ForeColor = TEXT_COLOR;
+                    txtDTPSHandle.Font = new Font("Consolas", 8F, FontStyle.Regular);
+                }
+            };
+            txtDTPSHandle.Leave += (s, ev) =>
+            {
+                if (string.IsNullOrEmpty(txtDTPSHandle.Text))
+                {
+                    SetPlaceholder(txtDTPSHandle, PLACEHOLDER_DTPS);
+                }
+            };
+            txtDTPSHandle.TextChanged += (s, ev) =>
+            {
+                if (txtDTPSHandle.Text != PLACEHOLDER_DTPS)
+                    DTPSHandle = txtDTPSHandle.Text;
+            };
+            panelDTPSHandleSingle.Controls.Add(txtDTPSHandle);
+
             panelButtonBar = new Panel();
             panelButtonBar.Dock = DockStyle.Top;
             panelButtonBar.Height = 28;
@@ -402,12 +483,37 @@ namespace Parsing_Plugin
             btnMaximize.TextAlign = ContentAlignment.MiddleCenter;
             btnMaximize.TabStop = false;
             btnMaximize.Cursor = Cursors.Hand;
+            Rectangle preMaxBounds = Rectangle.Empty;
+            bool isMaxed = false;
             btnMaximize.Click += (s, ev) =>
             {
-                if (this.WindowState == FormWindowState.Maximized)
-                    this.WindowState = FormWindowState.Normal;
+                if (isMaxed)
+                {
+                    this.Bounds = preMaxBounds;
+                    isMaxed = false;
+                }
                 else
-                    this.WindowState = FormWindowState.Maximized;
+                {
+                    preMaxBounds = this.Bounds;
+                    Screen scr = Screen.FromControl(this);
+                    this.Bounds = scr.WorkingArea;
+                    isMaxed = true;
+                }
+                try
+                {
+                    this.BeginInvoke((MethodInvoker)delegate
+                    {
+                        ApplyLayout(currentLayout);
+                        this.BeginInvoke((MethodInvoker)delegate
+                        {
+                            DoMainLayout();
+                            panelButtonBar.Invalidate(true);
+                            this.Invalidate(true);
+                            this.Refresh();
+                        });
+                    });
+                }
+                catch { }
             };
 
             Button btnClose = new Button();
@@ -440,9 +546,11 @@ namespace Parsing_Plugin
             {
                 new TileInfo("DPS", panelDPS),
                 new TileInfo("HPS", panelHPS),
+                new TileInfo("DTPS", panelDTPS),
                 new TileInfo("Mend Tracker", panelMend),
                 new TileInfo("Tracked DPS", panelMyDPS),
-                new TileInfo("Tracked HPS", panelMyHPS)
+                new TileInfo("Tracked HPS", panelMyHPS),
+                new TileInfo("Tracked DTPS", panelMyDTPS)
             };
 
             Button btnTiles = CreateBarButton("Tiles", 55, Color.FromArgb(255, 100, 180, 220));
@@ -608,6 +716,13 @@ namespace Parsing_Plugin
             WireDragEvents(lblMendHeader);
             WireDragEvents(lblMendContent);
             WireDragEvents(dividerMend);
+            WireDragEvents(panelDTPS);
+            WireDragEvents(lblDTPSHeader);
+            WireDragEvents(lblDTPSContent);
+            WireDragEvents(lblDTPSEncTitle);
+            WireDragEvents(panelMyDTPS);
+            WireDragEvents(lblMyDTPSHeader);
+            WireDragEvents(lblMyDTPSContent);
             WireDragEvents(panelButtonBar);
             WireDragEvents(panelHandleBar);
         }
@@ -636,7 +751,7 @@ namespace Parsing_Plugin
 
         private Label CreateContentLabel()
         {
-            Label lbl = new Label();
+            MultiColorLabel lbl = new MultiColorLabel();
             lbl.Text = "";
             lbl.ForeColor = TEXT_COLOR;
             lbl.Font = new Font("Consolas", 8.5F, FontStyle.Regular);
@@ -644,6 +759,41 @@ namespace Parsing_Plugin
             lbl.Padding = new Padding(4, 2, 4, 2);
             lbl.AutoSize = false;
             return lbl;
+        }
+
+        internal class MultiColorLabel : Label
+        {
+            public MultiColorLabel()
+            {
+                SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
+                BackColor = Color.Transparent;
+                DoubleBuffered = true;
+            }
+
+            protected override void OnPaintBackground(PaintEventArgs e)
+            {
+                if (Parent != null) InvokePaintBackground(Parent, e);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                if (string.IsNullOrEmpty(Text)) return;
+
+                string[] lines = Text.Split('\n');
+                int yPos = Padding.Top;
+                int lineH = TextRenderer.MeasureText("X", Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Height;
+                Color othersColor = Color.FromArgb(255, 255, 220, 80);
+
+                foreach (string line in lines)
+                {
+                    string l = line.TrimEnd('\r');
+                    Color c = ForeColor;
+                    if (l.TrimStart().StartsWith("Others"))
+                        c = othersColor;
+                    TextRenderer.DrawText(e.Graphics, l, Font, new Point(Padding.Left, yPos), c, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    yPos += lineH;
+                }
+            }
         }
 
         private void WireDragEvents(Control ctrl)
@@ -678,11 +828,6 @@ namespace Parsing_Plugin
                         return;
                     }
                 }
-                if (this.WindowState == FormWindowState.Maximized)
-                {
-                    this.WindowState = FormWindowState.Normal;
-                    formPoint = new Point(this.Width / 2, formPoint.Y);
-                }
                 isDragging = true;
                 dragOffset = formPoint;
             }
@@ -700,7 +845,6 @@ namespace Parsing_Plugin
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool ReleaseCapture();
 
-
         private void SetOpacitySafe(double opacity)
         {
             if (opacity < 0.4) opacity = 0.4;
@@ -712,13 +856,13 @@ namespace Parsing_Plugin
         }
 
         [System.Runtime.InteropServices.DllImport("shell32.dll")]
-        private static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid,
+        internal static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid,
             [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Interface)] out object propertyStore);
 
         [System.Runtime.InteropServices.ComImport]
         [System.Runtime.InteropServices.Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
         [System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
-        private interface IPropertyStore
+        internal interface IPropertyStore
         {
             void GetCount(out uint cProps);
             void GetAt(uint iProp, out PropertyKey pkey);
@@ -728,7 +872,7 @@ namespace Parsing_Plugin
         }
 
         [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 4)]
-        private struct PropertyKey
+        internal struct PropertyKey
         {
             public Guid fmtid;
             public uint pid;
@@ -736,7 +880,7 @@ namespace Parsing_Plugin
         }
 
         [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-        private struct PropVariant
+        internal struct PropVariant
         {
             public ushort vt;
             public ushort wReserved1, wReserved2, wReserved3;
@@ -747,6 +891,24 @@ namespace Parsing_Plugin
                 wReserved1 = wReserved2 = wReserved3 = 0;
                 p = System.Runtime.InteropServices.Marshal.StringToCoTaskMemUni(value);
             }
+        }
+
+        internal static void SetAppUserModelId(IntPtr hwnd, string appId)
+        {
+            try
+            {
+                Guid IID_IPropertyStore = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+                object store;
+                SHGetPropertyStoreForWindow(hwnd, ref IID_IPropertyStore, out store);
+                if (store != null)
+                {
+                    PropVariant pv = new PropVariant(appId);
+                    PropertyKey pk = new PropertyKey(new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 5);
+                    ((IPropertyStore)store).SetValue(ref pk, ref pv);
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(store);
+                }
+            }
+            catch { }
         }
 
         private void Overlay_MouseMove(object sender, MouseEventArgs e)
@@ -921,14 +1083,20 @@ namespace Parsing_Plugin
             EncounterData encounter = GetCurrentEncounter();
             if (encounter == null)
             {
-                SetText(lblDPSEncTitle, "");
-                SetText(lblHPSEncTitle, "");
-                SetText(lblDPSContent, "  No encounter data");
-                SetText(lblHPSContent, "  No encounter data");
-                SetText(lblMyDPSContent, "  No data");
-                SetText(lblMyHPSContent, "  No data");
-                SetText(lblMendContent, "  No Mend detected");
-                if (lblMendEmoticon != null) { lblMendEmoticon.Visible = false; if (mendEmoticonWrapper != null) mendEmoticonWrapper.Visible = false; }
+                if (string.IsNullOrEmpty(lblDPSContent.Text) || lblDPSContent.Text == "  No encounter data")
+                {
+                    SetText(lblDPSEncTitle, "");
+                    SetText(lblHPSEncTitle, "");
+                    SetText(lblDTPSEncTitle, "");
+                    SetText(lblDPSContent, "  No encounter data");
+                    SetText(lblHPSContent, "  No encounter data");
+                    SetText(lblDTPSContent, "  No encounter data");
+                    SetText(lblMyDPSContent, "  No data");
+                    SetText(lblMyHPSContent, "  No data");
+                    SetText(lblMyDTPSContent, "  No data");
+                    SetText(lblMendContent, "  No Mend detected");
+                    if (lblMendEmoticon != null) { lblMendEmoticon.Visible = false; if (mendEmoticonWrapper != null) mendEmoticonWrapper.Visible = false; }
+                }
                 this.ResumeLayout();
                 return;
             }
@@ -938,6 +1106,7 @@ namespace Parsing_Plugin
             string titleText = encTitle + " (" + duration + ")";
             SetText(lblDPSEncTitle, titleText);
             SetText(lblHPSEncTitle, titleText);
+            SetText(lblDTPSEncTitle, titleText);
 
             List<CombatantData> combatants = new List<CombatantData>();
             try
@@ -955,10 +1124,13 @@ namespace Parsing_Plugin
             List<CombatantData> hpsSorted = new List<CombatantData>(combatants);
             hpsSorted.Sort((a, b) => b.Healed.CompareTo(a.Healed));
 
-            string dpsText = FormatCombatantList(dpsSorted, true, lblDPSContent);
-            string hpsText = FormatCombatantList(hpsSorted, false, lblHPSContent);
+            double encDur = encounter.Duration.TotalSeconds;
+            string dpsText = FormatCombatantList(dpsSorted, CombatantTileMode.DPS, encDur);
+            string hpsText = FormatCombatantList(hpsSorted, CombatantTileMode.HPS, encDur);
+            string dtpsText = FormatCombatantList(combatants, CombatantTileMode.DTPS, encDur);
             SetText(lblDPSContent, dpsText);
             SetText(lblHPSContent, hpsText);
+            SetText(lblDTPSContent, dtpsText);
 
             CombatantData dpsChar = FindMyCharacter(combatants, DPSHandle);
             if (dpsChar != null)
@@ -984,6 +1156,19 @@ namespace Parsing_Plugin
                 SetText(lblMyHPSHeader, "Tracked HPS");
                 string hint = string.IsNullOrEmpty(HPSHandle) ? " (set HPS handle above)" : "";
                 SetText(lblMyHPSContent, "  No char found" + hint);
+            }
+
+            CombatantData dtpsChar = FindMyCharacter(combatants, DTPSHandle);
+            if (dtpsChar != null)
+            {
+                SetText(lblMyDTPSHeader, dtpsChar.Name.Trim() + "'s Tracked DTPS");
+                SetText(lblMyDTPSContent, FormatPowerBreakdown(dtpsChar, PowerBreakdownMode.DTPS, encounter, lblMyDTPSContent.Width, maxRowsTrackedDTPS));
+            }
+            else
+            {
+                SetText(lblMyDTPSHeader, "Tracked DTPS");
+                string hint = string.IsNullOrEmpty(DTPSHandle) ? " (set DTPS handle above)" : "";
+                SetText(lblMyDTPSContent, "  No char found" + hint);
             }
 
             UpdateMendTracker(encounter);
@@ -1066,12 +1251,24 @@ namespace Parsing_Plugin
         {
             if (!string.IsNullOrEmpty(handle))
             {
-                string displayName = COParser.GetNameForHandle(handle);
-                if (displayName != null)
+                string query = handle.Trim();
+                if (query.StartsWith("@"))
+                {
+                    string displayName = COParser.GetNameForHandle(query);
+                    if (displayName != null)
+                    {
+                        foreach (CombatantData cd in combatants)
+                        {
+                            if (cd.Name.Trim().Equals(displayName.Trim(), StringComparison.OrdinalIgnoreCase))
+                                return cd;
+                        }
+                    }
+                }
+                else
                 {
                     foreach (CombatantData cd in combatants)
                     {
-                        if (cd.Name.Trim().Equals(displayName.Trim(), StringComparison.OrdinalIgnoreCase))
+                        if (cd.Name.Trim().Equals(query, StringComparison.OrdinalIgnoreCase))
                             return cd;
                     }
                 }
@@ -1093,16 +1290,37 @@ namespace Parsing_Plugin
             return null;
         }
 
+        internal enum PowerBreakdownMode { DPS, HPS, DTPS }
+
         internal string FormatPowerBreakdown(CombatantData myData, bool isDPS, EncounterData encounter, int panelWidth)
         {
+            return FormatPowerBreakdown(myData, isDPS ? PowerBreakdownMode.DPS : PowerBreakdownMode.HPS, encounter, panelWidth, isDPS ? maxRowsTrackedDPS : maxRowsTrackedHPS);
+        }
+
+        internal string FormatPowerBreakdown(CombatantData myData, bool isDPS, EncounterData encounter, int panelWidth, int rowLimit)
+        {
+            return FormatPowerBreakdown(myData, isDPS ? PowerBreakdownMode.DPS : PowerBreakdownMode.HPS, encounter, panelWidth, rowLimit);
+        }
+
+        internal string FormatPowerBreakdown(CombatantData myData, PowerBreakdownMode mode, EncounterData encounter, int panelWidth, int rowLimit)
+        {
+            bool isDPS = mode == PowerBreakdownMode.DPS;
+            bool isHPS = mode == PowerBreakdownMode.HPS;
+            bool isDTPS = mode == PowerBreakdownMode.DTPS;
             string result = "";
             List<PowerEntry> powers = new List<PowerEntry>();
             double encDuration = encounter.Duration.TotalSeconds;
             if (encDuration < 1) encDuration = 1;
 
+            long totalActualDmg = 0;
+            long totalBaseDmg = 0;
+
             try
             {
-                string typeKey = isDPS ? "Outgoing Damage" : "Healing (Out)";
+                string typeKey;
+                if (isDPS) typeKey = "Outgoing Damage";
+                else if (isHPS) typeKey = "Healing (Out)";
+                else typeKey = "Incoming Damage";
 
                 DamageTypeData dtd;
                 if (!myData.Items.TryGetValue(typeKey, out dtd))
@@ -1123,7 +1341,6 @@ namespace Parsing_Plugin
                     long value = (long)at.Damage;
                     if (value <= 0) continue;
 
-                    int hits = at.Hits;
                     int highest = 0;
                     int lowest = int.MaxValue;
 
@@ -1137,6 +1354,15 @@ namespace Parsing_Plugin
                             {
                                 if (tick > highest) highest = tick;
                                 if (tick < lowest) lowest = tick;
+                            }
+                            if ((isDPS || isDTPS) && tick > 0)
+                            {
+                                totalActualDmg += tick;
+                                int baseDmg = 0;
+                                if (!string.IsNullOrEmpty(ms.Damage.DamageString2))
+                                    int.TryParse(ms.Damage.DamageString2, out baseDmg);
+                                if (baseDmg <= 0) baseDmg = tick;
+                                totalBaseDmg += baseDmg;
                             }
                         }
                     }
@@ -1152,7 +1378,6 @@ namespace Parsing_Plugin
                     pe.Name = displayName;
                     pe.Value = value;
                     pe.PerSecond = value / encDuration;
-                    pe.Hits = hits;
                     pe.HighestTick = highest;
                     pe.LowestTick = lowest;
                     powers.Add(pe);
@@ -1166,48 +1391,103 @@ namespace Parsing_Plugin
             powers.Sort((a, b) => b.Value.CompareTo(a.Value));
 
             long total = 0;
+            double totalPs = 0;
             foreach (PowerEntry pe in powers)
+            {
                 total += pe.Value;
+                totalPs += pe.PerSecond;
+            }
             if (total == 0) total = 1;
 
-            string psLabel = isDPS ? "DPS" : "HPS";
+            string psLabel = isDPS ? "DPS" : (isHPS ? "HPS" : "DTPS");
+            string totalLabel = isDPS ? "Damage" : (isHPS ? "Healed" : "DmgTaken");
 
-            int longestName = 5;
+            int longestName = 6;
             foreach (PowerEntry pe in powers)
                 if (pe.Name.Length > longestName) longestName = pe.Name.Length;
+            if ("Total:".Length > longestName) longestName = "Total:".Length;
             int nameWidth = Math.Min(longestName, 20);
 
             int wPs = 5;
             int wPct = 4;
             int wMax = 6;
             int wLow = 6;
+            int wTot = isDTPS ? 8 : 6;
 
             string hdrPower = ClipText("Power", nameWidth);
             string hdrPs = ClipText(psLabel, wPs);
             string hdrPct = ClipText("%", wPct);
             string hdrMaxHit = ClipText("MaxHit", wMax);
             string hdrLowHit = ClipText("LowHit", wLow);
+            string hdrTotal = ClipText(totalLabel, wTot);
 
-            result += String.Format(" {0,-" + nameWidth + "}\u2502{1," + wPs + "}\u2502{2," + wPct + "}\u2502{3," + wMax + "}\u2502{4," + wLow + "}\r\n",
-                hdrPower, hdrPs, hdrPct, hdrMaxHit, hdrLowHit);
-            result += " " + new string('\u2500', nameWidth) + "\u253C" + new string('\u2500', wPs) + "\u253C" + new string('\u2500', wPct) + "\u253C" + new string('\u2500', wMax) + "\u253C" + new string('\u2500', wLow) + "\r\n";
+            result += String.Format(" {0,-" + nameWidth + "}\u2502{1," + wPs + "}\u2502{2," + wPct + "}\u2502{3," + wMax + "}\u2502{4," + wLow + "}\u2502{5," + wTot + "}\r\n",
+                hdrPower, hdrPs, hdrPct, hdrMaxHit, hdrLowHit, hdrTotal);
+            result += " " + new string('\u2500', nameWidth) + "\u253C" + new string('\u2500', wPs) + "\u253C" + new string('\u2500', wPct) + "\u253C" + new string('\u2500', wMax) + "\u253C" + new string('\u2500', wLow) + "\u253C" + new string('\u2500', wTot) + "\r\n";
 
-            int maxRows = 15;
+            int hardCap = 50;
+            int rowsToShow = (rowLimit > 0) ? rowLimit : hardCap;
+            bool useOthers = (rowLimit > 0 && powers.Count > rowLimit);
+            int topN = useOthers ? rowLimit - 1 : Math.Min(rowsToShow, powers.Count);
+            if (topN < 0) topN = 0;
+
             int count = 0;
+            long othersValue = 0;
+            double othersPs = 0;
             foreach (PowerEntry pe in powers)
             {
-                if (count >= maxRows) break;
+                if (count < topN)
+                {
+                    string name = ClipText(pe.Name, nameWidth);
+                    double pct = (pe.Value * 100.0) / total;
 
-                string name = ClipText(pe.Name, nameWidth);
-                double pct = (pe.Value * 100.0) / total;
-
-                result += String.Format(" {0,-" + nameWidth + "}\u2502{1," + wPs + "}\u2502{2," + wPct + "}\u2502{3," + wMax + "}\u2502{4," + wLow + "}\r\n",
-                    name,
-                    ClipText(FormatNumber(pe.PerSecond), wPs),
-                    ClipText(((int)pct).ToString() + "%", wPct),
-                    ClipText(FormatNumber(pe.HighestTick), wMax),
-                    ClipText(FormatNumber(pe.LowestTick), wLow));
+                    result += String.Format(" {0,-" + nameWidth + "}\u2502{1," + wPs + "}\u2502{2," + wPct + "}\u2502{3," + wMax + "}\u2502{4," + wLow + "}\u2502{5," + wTot + "}\r\n",
+                        name,
+                        ClipText(FormatNumber(pe.PerSecond), wPs),
+                        ClipText(((int)pct).ToString() + "%", wPct),
+                        ClipText(FormatNumber(pe.HighestTick), wMax),
+                        ClipText(FormatNumber(pe.LowestTick), wLow),
+                        ClipText(FormatNumber(pe.Value), wTot));
+                }
+                else if (useOthers)
+                {
+                    othersValue += pe.Value;
+                    othersPs += pe.PerSecond;
+                }
                 count++;
+            }
+
+            if (useOthers && othersValue > 0)
+            {
+                double othersPct = (othersValue * 100.0) / total;
+                result += String.Format(" {0,-" + nameWidth + "}\u2502{1," + wPs + "}\u2502{2," + wPct + "}\u2502{3," + wMax + "}\u2502{4," + wLow + "}\u2502{5," + wTot + "}\r\n",
+                    ClipText("Others", nameWidth),
+                    ClipText(FormatNumber(othersPs), wPs),
+                    ClipText(((int)othersPct).ToString() + "%", wPct),
+                    "",
+                    "",
+                    ClipText(FormatNumber(othersValue), wTot));
+            }
+
+            result += " " + new string('\u2500', nameWidth) + "\u253C" + new string('\u2500', wPs) + "\u253C" + new string('\u2500', wPct) + "\u253C" + new string('\u2500', wMax) + "\u253C" + new string('\u2500', wLow) + "\u253C" + new string('\u2500', wTot) + "\r\n";
+            result += String.Format(" {0,-" + nameWidth + "}\u2502{1," + wPs + "}\u2502{2," + wPct + "}\u2502{3," + wMax + "}\u2502{4," + wLow + "}\u2502{5," + wTot + "}\r\n",
+                ClipText("Total:", nameWidth),
+                ClipText(FormatNumber(totalPs), wPs),
+                "100%",
+                "",
+                "",
+                ClipText(FormatNumber(total), wTot));
+
+            if ((isDPS || isDTPS) && totalBaseDmg > 0)
+            {
+                int sepWidth = nameWidth + wPs + wPct + wMax + wLow + wTot + 5;
+                result += " " + new string('\u2500', sepWidth) + "\r\n";
+                double bonus = ((double)(totalActualDmg - totalBaseDmg) / totalBaseDmg) * 100.0;
+                string sign = bonus >= 0 ? "-" : "+";
+                string label;
+                if (isDPS) label = "NPC's Resists: ";
+                else label = (myData != null ? myData.Name.Trim() : "Your") + "'s Resists: ";
+                result += " " + label + sign + Math.Abs(bonus).ToString("F2") + "%\r\n";
             }
 
             return result;
@@ -1218,12 +1498,13 @@ namespace Parsing_Plugin
             public string Name;
             public long Value;
             public double PerSecond;
-            public int Hits;
             public int HighestTick;
             public int LowestTick;
         }
 
-        private string FormatCombatantList(List<CombatantData> combatants, bool isDPS, Label contentLabel)
+        private enum CombatantTileMode { DPS, HPS, DTPS }
+
+        private string FormatCombatantList(List<CombatantData> combatants, CombatantTileMode mode, double encDuration)
         {
             if (combatants.Count == 0)
                 return "  No data";
@@ -1232,69 +1513,101 @@ namespace Parsing_Plugin
             foreach (CombatantData cd in combatants)
             {
                 if (cd.Name.StartsWith("[")) continue;
-                if (isDPS)
+                if (mode == CombatantTileMode.DPS)
                     total += cd.Damage;
-                else if (cd.Healed > 0)
-                    total += cd.Healed;
+                else if (mode == CombatantTileMode.HPS)
+                {
+                    if (cd.Healed > 0) total += cd.Healed;
+                }
+                else
+                {
+                    if (cd.DamageTaken > 0) total += cd.DamageTaken;
+                }
             }
             if (total == 0) total = 1;
 
             int wName = 12, wVal = 6, wPct = 4;
 
-            string valLabel = isDPS ? "DPS" : "HPS";
+            string valLabel = mode == CombatantTileMode.DPS ? "DPS" : (mode == CombatantTileMode.HPS ? "HPS" : "DTPS");
             string result = String.Format(" {0,-" + wName + "}\u2502{1," + wVal + "}\u2502{2," + wPct + "}\r\n",
                 ClipText("Name", wName), ClipText(valLabel, wVal), ClipText("%", wPct));
             result += " " + new string('\u2500', wName) + "\u253C" + new string('\u2500', wVal) + "\u253C" + new string('\u2500', wPct) + "\r\n";
 
-            int count = 0;
-
+            List<CombatantData> filtered = new List<CombatantData>();
             foreach (CombatantData cd in combatants)
             {
-                if (count >= 20) break;
-
                 if (cd.Name.StartsWith("[")) continue;
+                if (mode == CombatantTileMode.HPS && cd.Healed <= 0) continue;
+                if (mode == CombatantTileMode.DTPS && cd.DamageTaken <= 0) continue;
+                filtered.Add(cd);
+            }
 
-                string name = ClipText(cd.Name, wName);
+            if (mode == CombatantTileMode.DTPS)
+                filtered.Sort((a, b) => b.DamageTaken.CompareTo(a.DamageTaken));
 
-                if (isDPS)
+            int rowLimit = mode == CombatantTileMode.DPS ? maxRowsDPS : (mode == CombatantTileMode.HPS ? maxRowsHPS : maxRowsDTPS);
+            int hardCap = 50;
+            bool useOthers = (rowLimit > 0 && filtered.Count > rowLimit);
+            int topN = useOthers ? rowLimit - 1 : (rowLimit > 0 ? Math.Min(rowLimit, filtered.Count) : Math.Min(hardCap, filtered.Count));
+            if (topN < 0) topN = 0;
+
+            int count = 0;
+            long othersValue = 0;
+            double othersRate = 0;
+            foreach (CombatantData cd in filtered)
+            {
+                if (count < topN)
                 {
-                    double dps = cd.EncDPS;
-                    double pct = (cd.Damage * 100.0) / total;
-                    result += String.Format(" {0,-" + wName + "}\u2502{1," + wVal + "}\u2502{2," + (wPct - 1) + ":0}%\r\n",
-                        name,
-                        ClipText(FormatNumber(dps), wVal),
-                        pct);
+                    string name = ClipText(cd.Name, wName);
+                    if (mode == CombatantTileMode.DPS)
+                    {
+                        double dps = cd.EncDPS;
+                        double pct = (cd.Damage * 100.0) / total;
+                        result += String.Format(" {0,-" + wName + "}\u2502{1," + wVal + "}\u2502{2," + (wPct - 1) + ":0}%\r\n",
+                            name, ClipText(FormatNumber(dps), wVal), pct);
+                    }
+                    else if (mode == CombatantTileMode.HPS)
+                    {
+                        long healed = cd.Healed;
+                        double hps = cd.EncHPS;
+                        double pct = (healed * 100.0) / total;
+                        result += String.Format(" {0,-" + wName + "}\u2502{1," + wVal + "}\u2502{2," + (wPct - 1) + ":0}%\r\n",
+                            name, ClipText(FormatNumber(hps), wVal), pct);
+                    }
+                    else
+                    {
+                        long taken = cd.DamageTaken;
+                        double dur = encDuration > 0 ? encDuration : cd.Duration.TotalSeconds;
+                        if (dur < 1) dur = 1;
+                        double dtps = taken / dur;
+                        double pct = (taken * 100.0) / total;
+                        result += String.Format(" {0,-" + wName + "}\u2502{1," + wVal + "}\u2502{2," + (wPct - 1) + ":0}%\r\n",
+                            name, ClipText(FormatNumber(dtps), wVal), pct);
+                    }
                 }
-                else
+                else if (useOthers)
                 {
-                    long healed = cd.Healed;
-                    double hps = cd.EncHPS;
-
-                    if (healed <= 0) continue;
-
-                    double pct = (healed * 100.0) / total;
-                    result += String.Format(" {0,-" + wName + "}\u2502{1," + wVal + "}\u2502{2," + (wPct - 1) + ":0}%\r\n",
-                        name,
-                        ClipText(FormatNumber(hps), wVal),
-                        pct);
+                    if (mode == CombatantTileMode.DPS) { othersValue += cd.Damage; othersRate += cd.EncDPS; }
+                    else if (mode == CombatantTileMode.HPS) { othersValue += cd.Healed; othersRate += cd.EncHPS; }
+                    else
+                    {
+                        double odur = encDuration > 0 ? encDuration : cd.Duration.TotalSeconds;
+                        if (odur < 1) odur = 1;
+                        othersValue += cd.DamageTaken;
+                        othersRate += cd.DamageTaken / odur;
+                    }
                 }
                 count++;
             }
 
+            if (useOthers && othersValue > 0)
+            {
+                double othersPct = (othersValue * 100.0) / total;
+                result += String.Format(" {0,-" + wName + "}\u2502{1," + wVal + "}\u2502{2," + (wPct - 1) + ":0}%\r\n",
+                    ClipText("Others", wName), ClipText(FormatNumber(othersRate), wVal), othersPct);
+            }
+
             return result;
-        }
-
-        private static string TruncLine(string line, int maxChars)
-        {
-            return line.Length > maxChars ? line.Substring(0, maxChars) : line;
-        }
-
-        private int CalcContentHeight(string text, int headerHeight)
-        {
-            if (string.IsNullOrEmpty(text)) return headerHeight + 20;
-            int lines = 1;
-            foreach (char c in text) { if (c == '\n') lines++; }
-            return headerHeight + (lines * 15) + 6;
         }
 
         private static string ClipText(string text, int maxWidth)
@@ -1333,7 +1646,7 @@ namespace Parsing_Plugin
             return btn;
         }
 
-        private float[] tileFontSizes = { 48f, 48f, 48f, 48f, 48f };
+        private float[] tileFontSizes = { 48f, 48f, 48f, 48f, 48f, 48f, 48f };
 
         private void ApplyFontSize(int tileIdx, float size)
         {
@@ -1343,13 +1656,13 @@ namespace Parsing_Plugin
 
         private void AutoFitTileFont(int tileIdx)
         {
-            Label[] contentLabels = { lblDPSContent, lblHPSContent, lblMendContent, lblMyDPSContent, lblMyHPSContent };
+            Label[] contentLabels = { lblDPSContent, lblHPSContent, lblMendContent, lblMyDPSContent, lblMyHPSContent, lblDTPSContent, lblMyDTPSContent };
             Label lbl = contentLabels[tileIdx];
             if (lbl == null || string.IsNullOrEmpty(lbl.Text)) return;
 
             float maxSize = tileFontSizes[tileIdx];
             int rawWidth = lbl.Width - lbl.Padding.Left - lbl.Padding.Right;
-            int availWidth = rawWidth - Math.Max(30, (int)(rawWidth * 0.08));
+            int availWidth = rawWidth - 20;
             if (availWidth < 20) { lbl.Font = new Font("Consolas", maxSize); return; }
 
             string[] lines = lbl.Text.Split('\n');
@@ -1387,7 +1700,7 @@ namespace Parsing_Plugin
 
         private void AutoFitAllFonts()
         {
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 7; i++)
                 AutoFitTileFont(i);
         }
 
@@ -1498,6 +1811,7 @@ namespace Parsing_Plugin
                 CreateSettingsButton("Opacity", Color.FromArgb(255, 80, 200, 80)),
                 CreateSettingsButton("Presets", Color.FromArgb(255, 50, 80, 160)),
                 CreateSettingsButton("Add Tiles", Color.FromArgb(255, 220, 180, 50)),
+                CreateSettingsButton("Show Rows", Color.FromArgb(255, 200, 120, 200)),
                 btnUpdate
             };
 
@@ -1524,9 +1838,10 @@ namespace Parsing_Plugin
             buttons[2].Click += (s, ev) => { Point loc = popup.Location; popup.Close(); ShowOpacityPopup(loc); };
             buttons[3].Click += (s, ev) => { Point loc = popup.Location; popup.Close(); ShowPresetsPopup(loc); };
             buttons[4].Click += (s, ev) => { Point loc = popup.Location; popup.Close(); ShowAddTilesPopup(loc); };
+            buttons[5].Click += (s, ev) => { Point loc = popup.Location; popup.Close(); ShowRowsPopup(loc); };
 
             int y = 4;
-            int btnW = 90;
+            int btnW = 110;
             foreach (Button b in buttons)
             {
                 b.Location = new Point(3, y);
@@ -1541,6 +1856,32 @@ namespace Parsing_Plugin
             popLoc.X = popLoc.X - popW + anchor.Width;
             popup.Location = popLoc;
             popup.Show();
+        }
+
+        private void RenumberChildOverlays()
+        {
+            int dpsNum = 0;
+            int hpsNum = 0;
+            int dtpsNum = 0;
+            foreach (ChildOverlay c in childOverlays)
+            {
+                if (c.Mode == ChildOverlay.ChildMode.DPSOnly)
+                {
+                    dpsNum++;
+                    c.TileNumber = dpsNum;
+                }
+                else if (c.Mode == ChildOverlay.ChildMode.HPSOnly)
+                {
+                    hpsNum++;
+                    c.TileNumber = hpsNum;
+                }
+                else if (c.Mode == ChildOverlay.ChildMode.DTPSOnly)
+                {
+                    dtpsNum++;
+                    c.TileNumber = dtpsNum;
+                }
+                c.UpdateTileNumberLabel();
+            }
         }
 
         private void ShowAddTilesPopup(Point location)
@@ -1577,10 +1918,10 @@ namespace Parsing_Plugin
             int btnH = 24;
             int rowH = 26;
 
-            string[] sections = { "Tracked DPS", "Tracked HPS", "Both" };
-            ChildOverlay.ChildMode[] modes = { ChildOverlay.ChildMode.DPSOnly, ChildOverlay.ChildMode.HPSOnly, ChildOverlay.ChildMode.Both };
+            string[] sections = { "Tracked DPS", "Tracked HPS", "Tracked DTPS" };
+            ChildOverlay.ChildMode[] modes = { ChildOverlay.ChildMode.DPSOnly, ChildOverlay.ChildMode.HPSOnly, ChildOverlay.ChildMode.DTPSOnly };
 
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < sections.Length; i++)
             {
                 ChildOverlay.ChildMode mode = modes[i];
 
@@ -1595,9 +1936,11 @@ namespace Parsing_Plugin
                     child.FormClosed += (s2, ev2) =>
                     {
                         childOverlays.Remove(child);
+                        RenumberChildOverlays();
                         BuildAddTilesContent();
                     };
                     childOverlays.Add(child);
+                    RenumberChildOverlays();
                     child.Show();
                     BuildAddTilesContent();
                 };
@@ -1616,6 +1959,7 @@ namespace Parsing_Plugin
                 childOverlays.Clear();
                 foreach (ChildOverlay c in copy)
                     c.Close();
+                RenumberChildOverlays();
                 BuildAddTilesContent();
             };
             addTilesPopup.Controls.Add(btnCloseAll);
@@ -1800,12 +2144,16 @@ namespace Parsing_Plugin
                 xw.WriteElementString("Height", this.Size.Height.ToString());
                 string dpsH = "";
                 string hpsH = "";
+                string dtpsH = "";
                 if (txtDPSHandle != null && txtDPSHandle.Text != PLACEHOLDER_DPS)
                     dpsH = txtDPSHandle.Text ?? "";
                 if (txtHPSHandle != null && txtHPSHandle.Text != PLACEHOLDER_HPS)
                     hpsH = txtHPSHandle.Text ?? "";
+                if (txtDTPSHandle != null && txtDTPSHandle.Text != PLACEHOLDER_DTPS)
+                    dtpsH = txtDTPSHandle.Text ?? "";
                 xw.WriteElementString("DPSHandle", dpsH);
                 xw.WriteElementString("HPSHandle", hpsH);
+                xw.WriteElementString("DTPSHandle", dtpsH);
 
                 if (tileOrder != null)
                 {
@@ -1815,6 +2163,13 @@ namespace Parsing_Plugin
 
                 for (int i = 0; i < tileFontSizes.Length; i++)
                     xw.WriteElementString("FontSize_" + i, tileFontSizes[i].ToString());
+
+                xw.WriteElementString("MaxRowsDPS", maxRowsDPS.ToString());
+                xw.WriteElementString("MaxRowsHPS", maxRowsHPS.ToString());
+                xw.WriteElementString("MaxRowsDTPS", maxRowsDTPS.ToString());
+                xw.WriteElementString("MaxRowsTrackedDPS", maxRowsTrackedDPS.ToString());
+                xw.WriteElementString("MaxRowsTrackedHPS", maxRowsTrackedHPS.ToString());
+                xw.WriteElementString("MaxRowsTrackedDTPS", maxRowsTrackedDTPS.ToString());
 
                 xw.WriteElementString("ChildCount", childOverlays.Count.ToString());
                 for (int i = 0; i < childOverlays.Count; i++)
@@ -1828,6 +2183,7 @@ namespace Parsing_Plugin
                     xw.WriteElementString("H", c.Size.Height.ToString());
                     xw.WriteElementString("DPSHandle", c.DPSHandleValue ?? "");
                     xw.WriteElementString("HPSHandle", c.HPSHandleValue ?? "");
+                    xw.WriteElementString("RowLimit", c.RowLimit.ToString());
                     xw.WriteEndElement();
                 }
 
@@ -1875,6 +2231,8 @@ namespace Parsing_Plugin
                 if (n != null && !string.IsNullOrEmpty(n.InnerText)) SetDPSHandle(n.InnerText);
                 n = root.SelectSingleNode("HPSHandle");
                 if (n != null && !string.IsNullOrEmpty(n.InnerText)) SetHPSHandle(n.InnerText);
+                n = root.SelectSingleNode("DTPSHandle");
+                if (n != null && !string.IsNullOrEmpty(n.InnerText)) SetDTPSHandle(n.InnerText);
 
                 if (tileOrder != null)
                 {
@@ -1898,6 +2256,14 @@ namespace Parsing_Plugin
                         }
                     }
                 }
+
+                int mr;
+                n = root.SelectSingleNode("MaxRowsDPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsDPS = mr;
+                n = root.SelectSingleNode("MaxRowsHPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsHPS = mr;
+                n = root.SelectSingleNode("MaxRowsDTPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsDTPS = mr;
+                n = root.SelectSingleNode("MaxRowsTrackedDPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsTrackedDPS = mr;
+                n = root.SelectSingleNode("MaxRowsTrackedHPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsTrackedHPS = mr;
+                n = root.SelectSingleNode("MaxRowsTrackedDTPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsTrackedDTPS = mr;
 
                 ApplyLayout(currentLayout);
 
@@ -1941,11 +2307,16 @@ namespace Parsing_Plugin
                     XmlNode chn2 = childNode.SelectSingleNode("HPSHandle"); if (chn2 != null) chps = chn2.InnerText;
                     child.SetHandles(cdps, chps);
 
-                    child.FormClosed += (s2, ev2) => { childOverlays.Remove(child); };
+                    XmlNode rln = childNode.SelectSingleNode("RowLimit");
+                    int rl;
+                    if (rln != null && int.TryParse(rln.InnerText, out rl)) child.RowLimit = rl;
+
+                    child.FormClosed += (s2, ev2) => { childOverlays.Remove(child); RenumberChildOverlays(); };
                     childOverlays.Add(child);
                     child.Show();
                     child.Opacity = this.Opacity;
                 }
+                RenumberChildOverlays();
             }
             catch { }
         }
@@ -1977,6 +2348,122 @@ namespace Parsing_Plugin
 
             popup.Controls.Add(slider);
             popup.Size = new Size(200, 45);
+            popup.Show();
+        }
+
+        private void ShowRowsPopup(Point location)
+        {
+            Form popup = new Form();
+            popup.FormBorderStyle = FormBorderStyle.None;
+            popup.StartPosition = FormStartPosition.Manual;
+            popup.BackColor = Color.FromArgb(50, 50, 50);
+            popup.TopMost = true;
+            popup.ShowInTaskbar = false;
+            popup.MinimumSize = new Size(1, 1);
+            popup.Location = location;
+            popup.Deactivate += (s, ev) => { popup.Close(); };
+
+            List<string> labels = new List<string> { "DPS", "HPS", "DTPS", "Tracked DPS", "Tracked HPS", "Tracked DTPS" };
+            List<Func<int>> getters = new List<Func<int>>
+            {
+                () => maxRowsDPS,
+                () => maxRowsHPS,
+                () => maxRowsDTPS,
+                () => maxRowsTrackedDPS,
+                () => maxRowsTrackedHPS,
+                () => maxRowsTrackedDTPS
+            };
+            List<Action<int>> setters = new List<Action<int>>
+            {
+                v => maxRowsDPS = v,
+                v => maxRowsHPS = v,
+                v => maxRowsDTPS = v,
+                v => maxRowsTrackedDPS = v,
+                v => maxRowsTrackedHPS = v,
+                v => maxRowsTrackedDTPS = v
+            };
+
+            foreach (ChildOverlay c in childOverlays)
+            {
+                ChildOverlay co = c;
+                if (co.Mode == ChildOverlay.ChildMode.DPSOnly)
+                    labels.Add("Tracked DPS " + co.TileNumber);
+                else if (co.Mode == ChildOverlay.ChildMode.HPSOnly)
+                    labels.Add("Tracked HPS " + co.TileNumber);
+                else if (co.Mode == ChildOverlay.ChildMode.DTPSOnly)
+                    labels.Add("Tracked DTPS " + co.TileNumber);
+                else
+                    labels.Add("Tracked " + co.TileNumber);
+                getters.Add(() => co.RowLimit);
+                setters.Add(v => co.RowLimit = v);
+            }
+
+            int y = 6;
+            for (int i = 0; i < labels.Count; i++)
+            {
+                Label lbl = new Label();
+                lbl.Text = labels[i];
+                lbl.ForeColor = TEXT_COLOR;
+                lbl.Font = new Font("Segoe UI", 8F);
+                lbl.Location = new Point(6, y + 4);
+                lbl.Size = new Size(110, 18);
+                popup.Controls.Add(lbl);
+
+                TextBox txt = new TextBox();
+                txt.BorderStyle = BorderStyle.FixedSingle;
+                txt.BackColor = Color.FromArgb(40, 40, 40);
+                txt.ForeColor = TEXT_COLOR;
+                txt.Location = new Point(120, y + 2);
+                txt.Size = new Size(70, 20);
+                txt.MaxLength = 3;
+                int currentVal = getters[i]();
+                if (currentVal > 0)
+                {
+                    txt.Text = currentVal.ToString();
+                    txt.Font = new Font("Consolas", 8F, FontStyle.Regular);
+                }
+                else
+                {
+                    txt.Text = PLACEHOLDER_ROWS;
+                    txt.ForeColor = PLACEHOLDER_COLOR;
+                    txt.Font = new Font("Consolas", 8F, FontStyle.Italic);
+                }
+                Action<int> setter = setters[i];
+                txt.Enter += (s, ev) =>
+                {
+                    if (txt.Text == PLACEHOLDER_ROWS)
+                    {
+                        txt.Text = "";
+                        txt.ForeColor = TEXT_COLOR;
+                        txt.Font = new Font("Consolas", 8F, FontStyle.Regular);
+                    }
+                };
+                txt.Leave += (s, ev) =>
+                {
+                    if (string.IsNullOrEmpty(txt.Text))
+                    {
+                        txt.Text = PLACEHOLDER_ROWS;
+                        txt.ForeColor = PLACEHOLDER_COLOR;
+                        txt.Font = new Font("Consolas", 8F, FontStyle.Italic);
+                    }
+                };
+                txt.KeyPress += (s, ev) =>
+                {
+                    if (!char.IsDigit(ev.KeyChar) && ev.KeyChar != (char)Keys.Back) ev.Handled = true;
+                };
+                txt.TextChanged += (s, ev) =>
+                {
+                    if (txt.Text == PLACEHOLDER_ROWS) return;
+                    int v = 0;
+                    int.TryParse(txt.Text, out v);
+                    if (v < 0) v = 0;
+                    setter(v);
+                };
+                popup.Controls.Add(txt);
+                y += 26;
+            }
+
+            popup.Size = new Size(200, y + 6);
             popup.Show();
         }
 
@@ -2072,6 +2559,26 @@ namespace Parsing_Plugin
             panelMend.Controls.Add(mendEmoticonWrapper);
             panelMend.Controls.Add(lblMendHeader);
 
+            panelDTPS.Controls.Clear();
+            panelDTPS.Controls.Add(lblDTPSContent);
+            panelDTPS.Controls.Add(lblDTPSEncTitle);
+            panelDTPS.Controls.Add(lblDTPSHeader);
+
+            panelMyDTPS.Controls.Clear();
+            panelMyDTPS.Controls.Add(lblMyDTPSContent);
+            panelMyDTPS.Controls.Add(lblMyDTPSHeader);
+
+            panelDTPSHandleSingle.Controls.Clear();
+            panelDTPSHandleSingle.Controls.Add(txtDTPSHandle);
+            txtDTPSHandle.Dock = DockStyle.Fill;
+
+            if (IsTileVisible(panelMyDTPS))
+            {
+                panelMyDTPS.Controls.Add(panelDTPSHandleSingle);
+                panelMyDTPS.Controls.Remove(lblMyDTPSHeader);
+                panelMyDTPS.Controls.Add(lblMyDTPSHeader);
+            }
+
             panelDPSHandleSingle.Controls.Clear();
             panelDPSHandleSingle.Controls.Add(txtDPSHandle);
             txtDPSHandle.Dock = DockStyle.Fill;
@@ -2109,19 +2616,34 @@ namespace Parsing_Plugin
             this.Controls.Add(panelButtonBar);
 
             this.ResumeLayout(true);
-            OnResize(EventArgs.Empty);
+            DoMainLayout();
+            try
+            {
+                this.BeginInvoke((MethodInvoker)delegate
+                {
+                    DoMainLayout();
+                    panelButtonBar.Invalidate(true);
+                    this.Invalidate(true);
+                    this.Refresh();
+                });
+            }
+            catch { }
         }
 
         private void ApplyMainLayout()
         {
             this.MinimumSize = new Size(115, 400);
-            this.Size = new Size(PANEL_WIDTH * 2 + DIVIDER_WIDTH + 60, 700);
+            Size desired = new Size(PANEL_WIDTH * 2 + DIVIDER_WIDTH + 60, 900);
+            if (this.Size.Width < desired.Width || this.Size.Height < desired.Height)
+                this.Size = desired;
 
             bool showD = IsTileVisible(panelDPS);
             bool showH = IsTileVisible(panelHPS);
+            bool showDT = IsTileVisible(panelDTPS);
             bool showM = IsTileVisible(panelMend);
             bool showTD = IsTileVisible(panelMyDPS);
             bool showTH = IsTileVisible(panelMyHPS);
+            bool showTDT = IsTileVisible(panelMyDTPS);
 
             bool hasTopRow = showD || showH;
             bool hasBottomRow = showTD || showTH;
@@ -2158,7 +2680,8 @@ namespace Parsing_Plugin
                 else if (showTD) { panelMyDPS.Dock = DockStyle.Fill; panelBottomRow.Controls.Add(panelMyDPS); }
                 else { panelMyHPS.Dock = DockStyle.Fill; panelBottomRow.Controls.Add(panelMyHPS); }
 
-                panelBottomRow.Dock = DockStyle.Fill;
+                panelBottomRow.Dock = showTDT ? DockStyle.Top : DockStyle.Fill;
+                if (showTDT && panelBottomRow.Height < 50) panelBottomRow.Height = 200;
             }
 
             if (showM)
@@ -2167,11 +2690,28 @@ namespace Parsing_Plugin
                 panelMend.Height = 60;
             }
 
+            if (showDT)
+            {
+                panelDTPS.Dock = DockStyle.Top;
+                panelDTPS.Height = 120;
+            }
+
+            if (showTDT)
+            {
+                panelMyDTPS.Dock = DockStyle.Fill;
+            }
+
+            if (showTDT) this.Controls.Add(panelMyDTPS);
+            if (hasBottomRow && showTDT)
+                this.Controls.Add(new Panel { Dock = DockStyle.Top, Height = DIVIDER_WIDTH, BackColor = DIVIDER_COLOR });
             if (hasBottomRow) this.Controls.Add(panelBottomRow);
-            if (showM && hasBottomRow)
+            if (showM && (hasBottomRow || showTDT))
                 this.Controls.Add(new Panel { Dock = DockStyle.Top, Height = DIVIDER_WIDTH, BackColor = DIVIDER_COLOR });
             if (showM) this.Controls.Add(panelMend);
-            if (hasTopRow && (showM || hasBottomRow))
+            if (showDT && (showM || hasBottomRow || showTDT))
+                this.Controls.Add(new Panel { Dock = DockStyle.Top, Height = DIVIDER_WIDTH, BackColor = DIVIDER_COLOR });
+            if (showDT) this.Controls.Add(panelDTPS);
+            if (hasTopRow && (showDT || showM || hasBottomRow || showTDT))
                 this.Controls.Add(new Panel { Dock = DockStyle.Top, Height = DIVIDER_WIDTH, BackColor = DIVIDER_COLOR });
             if (hasTopRow) this.Controls.Add(panelTopRow);
         }
@@ -2201,7 +2741,9 @@ namespace Parsing_Plugin
         private void ApplyHorizontalLayout()
         {
             this.MinimumSize = new Size(115, 200);
-            this.Size = new Size(PANEL_WIDTH * 5 + DIVIDER_WIDTH * 4, 350);
+            int tilesCount = GetVisibleTiles().Count;
+            if (tilesCount < 1) tilesCount = 1;
+            this.Size = new Size(PANEL_WIDTH * tilesCount + DIVIDER_WIDTH * (tilesCount - 1), 350);
 
             List<Panel> visible = GetVisibleTiles();
             if (visible.Count == 0) return;
@@ -2258,6 +2800,7 @@ namespace Parsing_Plugin
 
         private const int RESIZE_BORDER = 48;
         private const int WM_NCHITTEST = 0x84;
+        private const int WM_SIZE = 0x0005;
         private const int HTBOTTOMRIGHT = 17;
 
         protected override void WndProc(ref Message m)
@@ -2272,6 +2815,10 @@ namespace Parsing_Plugin
                 }
             }
             base.WndProc(ref m);
+            if (m.Msg == WM_SIZE)
+            {
+                try { DoMainLayout(); } catch { }
+            }
         }
 
         protected override CreateParams CreateParams
@@ -2285,9 +2832,20 @@ namespace Parsing_Plugin
             }
         }
 
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            DoMainLayout();
+        }
+
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            DoMainLayout();
+        }
+
+        private void DoMainLayout()
+        {
             if (panelDPS == null || panelMyDPS == null) return;
 
             switch (currentLayout)
@@ -2299,14 +2857,18 @@ namespace Parsing_Plugin
 
                     bool hasTop = IsTileVisible(panelDPS) || IsTileVisible(panelHPS);
                     bool hasBot = IsTileVisible(panelMyDPS) || IsTileVisible(panelMyHPS);
-                    float units = (hasTop ? 1f : 0f) + (IsTileVisible(panelMend) ? 0.5f : 0f) + (hasBot ? 1f : 0f);
+                    bool hasDT = IsTileVisible(panelDTPS);
+                    bool hasTDT = IsTileVisible(panelMyDTPS);
+                    float units = (hasTop ? 1f : 0f) + (hasDT ? 1f : 0f) + (IsTileVisible(panelMend) ? 0.5f : 0f) + (hasBot ? 1f : 0f) + (hasTDT ? 1f : 0f);
                     if (units > 0)
                     {
-                        int fixedHeight = panelButtonBar.Height + lblHandleTracking.Height + panelHandleBar.Height + DIVIDER_WIDTH * 2;
+                        int fixedHeight = panelButtonBar.Height + DIVIDER_WIDTH * 2;
                         int availHeight = this.ClientSize.Height - fixedHeight;
                         int unitH = (int)(availHeight / units);
                         if (hasTop) panelTopRow.Height = unitH;
+                        if (hasDT) panelDTPS.Height = unitH;
                         if (IsTileVisible(panelMend)) panelMend.Height = unitH / 2 + HEADER_HEIGHT;
+                        if (hasBot && hasTDT) panelBottomRow.Height = unitH;
                     }
                     break;
 
@@ -2395,18 +2957,6 @@ namespace Parsing_Plugin
             this.Dispose();
         }
 
-        public Point OverlayLocation
-        {
-            get { return this.Location; }
-            set { this.Location = value; }
-        }
-
-        public Size OverlaySize
-        {
-            get { return this.Size; }
-            set { this.Size = value; }
-        }
-
         private string GetPluginDir()
         {
             foreach (ActPluginData plugin in ActGlobals.oFormActMain.ActPlugins)
@@ -2439,12 +2989,16 @@ namespace Parsing_Plugin
                 xw.WriteElementString("Height", this.Size.Height.ToString());
                 string dpsH = "";
                 string hpsH = "";
+                string dtpsH = "";
                 if (txtDPSHandle != null && txtDPSHandle.Text != PLACEHOLDER_DPS)
                     dpsH = txtDPSHandle.Text ?? "";
                 if (txtHPSHandle != null && txtHPSHandle.Text != PLACEHOLDER_HPS)
                     hpsH = txtHPSHandle.Text ?? "";
+                if (txtDTPSHandle != null && txtDTPSHandle.Text != PLACEHOLDER_DTPS)
+                    dtpsH = txtDTPSHandle.Text ?? "";
                 xw.WriteElementString("DPSHandle", dpsH);
                 xw.WriteElementString("HPSHandle", hpsH);
+                xw.WriteElementString("DTPSHandle", dtpsH);
 
                 if (tileOrder != null)
                 {
@@ -2454,6 +3008,13 @@ namespace Parsing_Plugin
 
                 for (int i = 0; i < tileFontSizes.Length; i++)
                     xw.WriteElementString("FontSize_" + i, tileFontSizes[i].ToString());
+
+                xw.WriteElementString("MaxRowsDPS", maxRowsDPS.ToString());
+                xw.WriteElementString("MaxRowsHPS", maxRowsHPS.ToString());
+                xw.WriteElementString("MaxRowsDTPS", maxRowsDTPS.ToString());
+                xw.WriteElementString("MaxRowsTrackedDPS", maxRowsTrackedDPS.ToString());
+                xw.WriteElementString("MaxRowsTrackedHPS", maxRowsTrackedHPS.ToString());
+                xw.WriteElementString("MaxRowsTrackedDTPS", maxRowsTrackedDTPS.ToString());
 
                 xw.WriteElementString("LastPreset", lastPresetName ?? "");
 
@@ -2502,6 +3063,8 @@ namespace Parsing_Plugin
                 if (n != null && !string.IsNullOrEmpty(n.InnerText)) SetDPSHandle(n.InnerText);
                 n = root.SelectSingleNode("HPSHandle");
                 if (n != null && !string.IsNullOrEmpty(n.InnerText)) SetHPSHandle(n.InnerText);
+                n = root.SelectSingleNode("DTPSHandle");
+                if (n != null && !string.IsNullOrEmpty(n.InnerText)) SetDTPSHandle(n.InnerText);
 
                 if (tileOrder != null)
                 {
@@ -2526,6 +3089,14 @@ namespace Parsing_Plugin
                     }
                 }
 
+                int mr;
+                n = root.SelectSingleNode("MaxRowsDPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsDPS = mr;
+                n = root.SelectSingleNode("MaxRowsHPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsHPS = mr;
+                n = root.SelectSingleNode("MaxRowsDTPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsDTPS = mr;
+                n = root.SelectSingleNode("MaxRowsTrackedDPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsTrackedDPS = mr;
+                n = root.SelectSingleNode("MaxRowsTrackedHPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsTrackedHPS = mr;
+                n = root.SelectSingleNode("MaxRowsTrackedDTPS"); if (n != null && int.TryParse(n.InnerText, out mr)) maxRowsTrackedDTPS = mr;
+
                 ApplyLayout(currentLayout);
 
                 this.Size = new Size(w, h);
@@ -2542,12 +3113,15 @@ namespace Parsing_Plugin
 
                 string savedDPS = "";
                 string savedHPS = "";
+                string savedDTPS = "";
                 n = root.SelectSingleNode("DPSHandle");
                 if (n != null && !string.IsNullOrEmpty(n.InnerText)) savedDPS = n.InnerText;
                 n = root.SelectSingleNode("HPSHandle");
                 if (n != null && !string.IsNullOrEmpty(n.InnerText)) savedHPS = n.InnerText;
+                n = root.SelectSingleNode("DTPSHandle");
+                if (n != null && !string.IsNullOrEmpty(n.InnerText)) savedDTPS = n.InnerText;
 
-                if (!string.IsNullOrEmpty(savedDPS) || !string.IsNullOrEmpty(savedHPS))
+                if (!string.IsNullOrEmpty(savedDPS) || !string.IsNullOrEmpty(savedHPS) || !string.IsNullOrEmpty(savedDTPS))
                 {
                     Timer handleTimer = new Timer();
                     handleTimer.Interval = 200;
@@ -2557,6 +3131,7 @@ namespace Parsing_Plugin
                         handleTimer.Dispose();
                         if (!string.IsNullOrEmpty(savedDPS)) SetDPSHandle(savedDPS);
                         if (!string.IsNullOrEmpty(savedHPS)) SetHPSHandle(savedHPS);
+                        if (!string.IsNullOrEmpty(savedDTPS)) SetDTPSHandle(savedDTPS);
                     };
                     handleTimer.Start();
                 }
@@ -2567,10 +3142,57 @@ namespace Parsing_Plugin
 
     public class ChildOverlay : Form
     {
-        public enum ChildMode { DPSOnly, HPSOnly, Both }
+        public enum ChildMode { DPSOnly, HPSOnly, Both, DTPSOnly }
         public ChildMode Mode { get; private set; }
         public string DPSHandleValue { get { return dpsHandle; } }
         public string HPSHandleValue { get { return hpsHandle; } }
+
+        public int TileNumber { get; set; }
+        public int RowLimit { get; set; }
+        private Label lblTileNumber;
+        public void UpdateTileNumberLabel()
+        {
+            if (lblTileNumber != null)
+                lblTileNumber.Text = TileNumber.ToString();
+            UpdateTaskbarIcon();
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            MiniOverlay.SetAppUserModelId(this.Handle, "CO.MiniParse.Overlay");
+        }
+
+        private void UpdateTaskbarIcon()
+        {
+            try
+            {
+                Color iconColor;
+                if (Mode == ChildMode.HPSOnly) iconColor = MY_HPS_ACCENT;
+                else if (Mode == ChildMode.DTPSOnly) iconColor = MY_DTPS_ACCENT;
+                else iconColor = MY_DPS_ACCENT;
+
+                int sz = 64;
+                Bitmap bmp = new Bitmap(sz, sz);
+                using (Graphics g = Graphics.FromImage(bmp))
+                {
+                    g.Clear(Color.FromArgb(30, 30, 30));
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                    Font numFont = new Font("Consolas", 36F, FontStyle.Bold);
+                    string txt = TileNumber.ToString();
+                    SizeF sizef = g.MeasureString(txt, numFont);
+                    float x = (sz - sizef.Width) / 2;
+                    float y = (sz - sizef.Height) / 2;
+                    using (Brush b = new SolidBrush(iconColor))
+                        g.DrawString(txt, numFont, b, x, y);
+                }
+                this.Icon = Icon.FromHandle(bmp.GetHicon());
+
+                string modeName = Mode == ChildMode.DPSOnly ? "Tracked DPS" : (Mode == ChildMode.HPSOnly ? "Tracked HPS" : (Mode == ChildMode.DTPSOnly ? "Tracked DTPS" : "Tracked"));
+                this.Text = modeName + " " + TileNumber;
+            }
+            catch { }
+        }
 
         public void SetHandles(string dps, string hps)
         {
@@ -2601,8 +3223,8 @@ namespace Parsing_Plugin
         private bool isDragging = false;
         private Point dragOffset;
 
-        private const string PLACEHOLDER_DPS = "type DPS handle here...";
-        private const string PLACEHOLDER_HPS = "type HPS handle here...";
+        private const string PLACEHOLDER_DPS = "name or @handle...";
+        private const string PLACEHOLDER_HPS = "name or @handle...";
 
         private static readonly Color BG_COLOR = Color.FromArgb(30, 30, 30);
         private static readonly Color HEADER_BG = Color.FromArgb(50, 50, 50);
@@ -2611,6 +3233,7 @@ namespace Parsing_Plugin
         private static readonly Color PLACEHOLDER_COLOR = Color.FromArgb(120, 120, 120);
         private static readonly Color MY_DPS_ACCENT = Color.FromArgb(255, 100, 100);
         private static readonly Color MY_HPS_ACCENT = Color.FromArgb(120, 230, 120);
+        private static readonly Color MY_DTPS_ACCENT = Color.FromArgb(120, 240, 240);
 
         public ChildOverlay(MiniOverlay parent, ChildMode mode = ChildMode.Both)
         {
@@ -2619,10 +3242,11 @@ namespace Parsing_Plugin
             this.FormBorderStyle = FormBorderStyle.None;
             this.BackColor = BG_COLOR;
             this.TopMost = true;
-            this.ShowInTaskbar = false;
+            this.ShowInTaskbar = true;
             this.DoubleBuffered = true;
+            this.Text = mode == ChildMode.DPSOnly ? "Tracked DPS" : (mode == ChildMode.HPSOnly ? "Tracked HPS" : (mode == ChildMode.DTPSOnly ? "Tracked DTPS" : "Tracked"));
 
-            bool showDPS = mode == ChildMode.DPSOnly || mode == ChildMode.Both;
+            bool showDPS = mode == ChildMode.DPSOnly || mode == ChildMode.Both || mode == ChildMode.DTPSOnly;
             bool showHPS = mode == ChildMode.HPSOnly || mode == ChildMode.Both;
 
             if (mode == ChildMode.Both)
@@ -2644,17 +3268,17 @@ namespace Parsing_Plugin
                 panelDPS.BackColor = Color.Transparent;
 
                 lblDPSHeader = new Label();
-                lblDPSHeader.Text = "Tracked DPS";
+                lblDPSHeader.Text = mode == ChildMode.DTPSOnly ? "Tracked DTPS" : "Tracked DPS";
                 lblDPSHeader.Dock = DockStyle.Top;
                 lblDPSHeader.Height = 20;
                 lblDPSHeader.BackColor = HEADER_BG;
-                lblDPSHeader.ForeColor = MY_DPS_ACCENT;
+                lblDPSHeader.ForeColor = mode == ChildMode.DTPSOnly ? MY_DTPS_ACCENT : MY_DPS_ACCENT;
                 lblDPSHeader.Font = new Font("Consolas", 9F, FontStyle.Bold);
                 lblDPSHeader.TextAlign = ContentAlignment.MiddleCenter;
 
                 txtDPSHandle = CreateHandleTextBox(PLACEHOLDER_DPS, true);
 
-                lblDPSContent = new Label();
+                lblDPSContent = new MiniOverlay.MultiColorLabel();
                 lblDPSContent.Dock = DockStyle.Fill;
                 lblDPSContent.ForeColor = TEXT_COLOR;
                 lblDPSContent.Font = new Font("Consolas", 8.5f);
@@ -2687,7 +3311,7 @@ namespace Parsing_Plugin
 
                 txtHPSHandle = CreateHandleTextBox(PLACEHOLDER_HPS, false);
 
-                lblHPSContent = new Label();
+                lblHPSContent = new MiniOverlay.MultiColorLabel();
                 lblHPSContent.Dock = DockStyle.Fill;
                 lblHPSContent.ForeColor = TEXT_COLOR;
                 lblHPSContent.Font = new Font("Consolas", 8.5f);
@@ -2722,6 +3346,19 @@ namespace Parsing_Plugin
             closePanel.BackColor = HEADER_BG;
             btnClose.Dock = DockStyle.Right;
             closePanel.Controls.Add(btnClose);
+
+            lblTileNumber = new Label();
+            lblTileNumber.Text = "";
+            Color tileNumColor;
+            if (mode == ChildMode.HPSOnly) tileNumColor = MY_HPS_ACCENT;
+            else if (mode == ChildMode.DTPSOnly) tileNumColor = MY_DTPS_ACCENT;
+            else tileNumColor = MY_DPS_ACCENT;
+            lblTileNumber.ForeColor = tileNumColor;
+            lblTileNumber.Font = new Font("Consolas", 9F, FontStyle.Bold);
+            lblTileNumber.Dock = DockStyle.Left;
+            lblTileNumber.Width = 30;
+            lblTileNumber.TextAlign = ContentAlignment.MiddleCenter;
+            closePanel.Controls.Add(lblTileNumber);
 
             Panel gripPanel = new Panel();
             gripPanel.Size = new Size(16, 16);
@@ -2785,7 +3422,7 @@ namespace Parsing_Plugin
 
                 this.Resize += (s, ev) => { panelDPS.Width = this.ClientSize.Width / 2 - 1; };
             }
-            else if (mode == ChildMode.DPSOnly)
+            else if (mode == ChildMode.DPSOnly || mode == ChildMode.DTPSOnly)
             {
                 panelDPS.Dock = DockStyle.Fill;
                 this.Controls.Add(panelDPS);
@@ -2889,13 +3526,21 @@ namespace Parsing_Plugin
                 CombatantData dpsChar = parent.FindMyCharacter(combatants, dpsHandle);
                 if (dpsChar != null)
                 {
-                    lblDPSHeader.Text = dpsChar.Name.Trim() + "'s Tracked DPS";
-                    lblDPSContent.Text = parent.FormatPowerBreakdown(dpsChar, true, encounter, lblDPSContent.Width);
+                    if (Mode == ChildMode.DTPSOnly)
+                    {
+                        lblDPSHeader.Text = dpsChar.Name.Trim() + "'s Tracked DTPS";
+                        lblDPSContent.Text = parent.FormatPowerBreakdown(dpsChar, MiniOverlay.PowerBreakdownMode.DTPS, encounter, lblDPSContent.Width, RowLimit);
+                    }
+                    else
+                    {
+                        lblDPSHeader.Text = dpsChar.Name.Trim() + "'s Tracked DPS";
+                        lblDPSContent.Text = parent.FormatPowerBreakdown(dpsChar, true, encounter, lblDPSContent.Width, RowLimit);
+                    }
                 }
                 else
                 {
-                    lblDPSHeader.Text = "Tracked DPS";
-                    string hint = string.IsNullOrEmpty(dpsHandle) ? " (set DPS handle)" : "";
+                    lblDPSHeader.Text = Mode == ChildMode.DTPSOnly ? "Tracked DTPS" : "Tracked DPS";
+                    string hint = string.IsNullOrEmpty(dpsHandle) ? (Mode == ChildMode.DTPSOnly ? " (set DTPS handle)" : " (set DPS handle)") : "";
                     lblDPSContent.Text = "  No char found" + hint;
                 }
             }
@@ -2906,7 +3551,7 @@ namespace Parsing_Plugin
                 if (hpsChar != null)
                 {
                     lblHPSHeader.Text = hpsChar.Name.Trim() + "'s Tracked HPS";
-                    lblHPSContent.Text = parent.FormatPowerBreakdown(hpsChar, false, encounter, lblHPSContent.Width);
+                    lblHPSContent.Text = parent.FormatPowerBreakdown(hpsChar, false, encounter, lblHPSContent.Width, RowLimit);
                 }
                 else
                 {
@@ -2925,7 +3570,7 @@ namespace Parsing_Plugin
         {
             if (lbl == null || string.IsNullOrEmpty(lbl.Text)) return;
             int rawWidth = lbl.Width - lbl.Padding.Left - lbl.Padding.Right;
-            int availWidth = rawWidth - Math.Max(30, (int)(rawWidth * 0.08));
+            int availWidth = rawWidth - 20;
             if (availWidth < 20) { lbl.Font = new Font("Consolas", maxFontSize); return; }
 
             string longestLine = "";
