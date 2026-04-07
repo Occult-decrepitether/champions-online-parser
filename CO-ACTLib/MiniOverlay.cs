@@ -153,7 +153,7 @@ namespace Parsing_Plugin
         private const int DIVIDER_WIDTH = 2;
         private const int UPDATE_INTERVAL_MS = 1000;
 
-        private const string CURRENT_VERSION = "3.1.5";
+        private const string CURRENT_VERSION = "3.1.6";
         private const string UPDATE_API_URL = "https://api.github.com/repos/Occult-decrepitether/champions-online-parser/releases/latest";
         private bool updateAvailable = false;
         private string latestVersion = "";
@@ -1036,37 +1036,108 @@ namespace Parsing_Plugin
             pulseTimer.Start();
         }
 
+        private const string CANONICAL_DLL_NAME = "CO-ACTLib64v2.dll";
+
         private void InstallUpdate()
         {
             try
             {
                 if (string.IsNullOrEmpty(latestDownloadUrl)) return;
-                string pluginDir = GetPluginDir();
-                string currentDll = "";
-                foreach (ActPluginData plugin in ActGlobals.oFormActMain.ActPlugins)
+
+                string currentDll = ResolveLoadedPluginPath();
+                if (string.IsNullOrEmpty(currentDll))
                 {
-                    if (plugin.pluginFile != null && plugin.pluginFile.Name.Contains("CO-ACTLib"))
-                    {
-                        currentDll = plugin.pluginFile.FullName;
-                        break;
-                    }
+                    MessageBox.Show("Update failed: could not locate the running plugin DLL on disk.", "CO-ACTLib Update", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
                 }
-                if (string.IsNullOrEmpty(currentDll)) return;
-                string tempDll = currentDll + ".new";
+
+                // Always write the new file as CO-ACTLib64v2.dll, even if the user is
+                // running an older build with a different filename (e.g. CO-ACTLib64.dll).
+                // This standardizes the filename across all installs going forward.
+                string pluginDir = Path.GetDirectoryName(currentDll);
+                string targetDll = Path.Combine(pluginDir, CANONICAL_DLL_NAME);
+                bool renamed = !string.Equals(Path.GetFileName(currentDll), CANONICAL_DLL_NAME, StringComparison.OrdinalIgnoreCase);
+
+                string tempDll = targetDll + ".new";
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
                 using (WebClient wc = new WebClient())
                 {
                     wc.Headers.Add("User-Agent", "CO-ACTLib-Update");
                     wc.DownloadFile(latestDownloadUrl, tempDll);
                 }
-                if (File.Exists(currentDll)) File.Delete(currentDll);
-                File.Move(tempDll, currentDll);
-                MessageBox.Show("Update downloaded. Disable and re-enable the plugin in ACT to apply.", "CO-ACTLib Update", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                FileInfo fi = new FileInfo(tempDll);
+                if (!fi.Exists || fi.Length < 1024)
+                {
+                    try { if (File.Exists(tempDll)) File.Delete(tempDll); } catch { }
+                    MessageBox.Show("Update failed: downloaded file is missing or too small.", "CO-ACTLib Update", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (File.Exists(targetDll)) File.Delete(targetDll);
+                File.Move(tempDll, targetDll);
+
+                // If the user was running an older filename, remove the old DLL so they
+                // don't end up with two copies sitting in the Plugins folder.
+                string oldFileMsg = "";
+                if (renamed)
+                {
+                    try
+                    {
+                        if (File.Exists(currentDll)) File.Delete(currentDll);
+                        oldFileMsg = "\n\nThe plugin filename has been updated from " + Path.GetFileName(currentDll) + " to " + CANONICAL_DLL_NAME + ". After restarting ACT, you may need to enable the new plugin entry in the Plugins tab.";
+                    }
+                    catch
+                    {
+                        oldFileMsg = "\n\nNote: the old file " + Path.GetFileName(currentDll) + " could not be removed automatically (it may be locked). Please delete it manually after closing ACT, then re-enable " + CANONICAL_DLL_NAME + " in the Plugins tab.";
+                    }
+                }
+
+                MessageBox.Show("Update downloaded to:\n" + targetDll + "\n\nClose ACT completely and restart it to apply the update." + oldFileMsg, "CO-ACTLib Update", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
                 MessageBox.Show("Update failed: " + ex.Message, "CO-ACTLib Update", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private string ResolveLoadedPluginPath()
+        {
+            // Most reliable: ask the running assembly where it lives on disk.
+            try
+            {
+                string asmPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                if (!string.IsNullOrEmpty(asmPath) && File.Exists(asmPath))
+                    return asmPath;
+            }
+            catch { }
+
+            // Fallback: walk ACT's plugin list, but only consider entries that are
+            // actually loaded AND whose file still exists on disk. This avoids picking
+            // up stale registrations from previous installs with different filenames.
+            try
+            {
+                Type myType = this.GetType();
+                foreach (ActPluginData plugin in ActGlobals.oFormActMain.ActPlugins)
+                {
+                    if (plugin.pluginFile == null) continue;
+                    if (!plugin.pluginFile.Exists) continue;
+                    if (plugin.pluginObj == null) continue;
+                    if (plugin.pluginObj.GetType().Assembly == myType.Assembly)
+                        return plugin.pluginFile.FullName;
+                }
+                // Last-ditch: any enabled CO-ACTLib entry whose file exists.
+                foreach (ActPluginData plugin in ActGlobals.oFormActMain.ActPlugins)
+                {
+                    if (plugin.pluginFile == null) continue;
+                    if (!plugin.pluginFile.Exists) continue;
+                    if (plugin.pluginFile.Name.IndexOf("CO-ACTLib", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return plugin.pluginFile.FullName;
+                }
+            }
+            catch { }
+
+            return "";
         }
 
         protected override void OnVisibleChanged(EventArgs e)
@@ -2959,10 +3030,10 @@ namespace Parsing_Plugin
 
         private string GetPluginDir()
         {
-            foreach (ActPluginData plugin in ActGlobals.oFormActMain.ActPlugins)
+            string path = ResolveLoadedPluginPath();
+            if (!string.IsNullOrEmpty(path))
             {
-                if (plugin.pluginFile != null && plugin.pluginFile.Name.Contains("CO-ACTLib"))
-                    return plugin.pluginFile.DirectoryName;
+                try { return Path.GetDirectoryName(path); } catch { }
             }
             return Environment.CurrentDirectory;
         }
