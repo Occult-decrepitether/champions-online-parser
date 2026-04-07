@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Windows.Forms;
 using System.Xml;
 using Advanced_Combat_Tracker;
@@ -136,6 +137,15 @@ namespace Parsing_Plugin
         private const int DIVIDER_WIDTH = 2;
         private const int UPDATE_INTERVAL_MS = 1000;
 
+        private const string CURRENT_VERSION = "3.1.2";
+        private const string UPDATE_API_URL = "https://api.github.com/repos/Occult-decrepitether/champions-online-parser/releases/latest";
+        private bool updateAvailable = false;
+        private string latestVersion = "";
+        private string latestDownloadUrl = "";
+        private Timer pulseTimer;
+        private float pulsePhase = 0f;
+        private Button btnUpdateRef = null;
+
         private static readonly Color BG_COLOR = Color.FromArgb(220, 30, 30, 30);
         private static readonly Color HEADER_BG = Color.FromArgb(255, 50, 50, 50);
         private static readonly Color DIVIDER_COLOR = Color.FromArgb(255, 70, 70, 70);
@@ -153,6 +163,7 @@ namespace Parsing_Plugin
         {
             InitializeOverlay();
             SetupTimer();
+            CheckForUpdate();
         }
 
         private void InitializeOverlay()
@@ -786,6 +797,116 @@ namespace Parsing_Plugin
             if (!onScreen) this.Location = new Point(100, 100);
         }
 
+        public void CheckForUpdate()
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+                    using (WebClient wc = new WebClient())
+                    {
+                        wc.Headers.Add("User-Agent", "CO-ACTLib-UpdateCheck");
+                        string json = wc.DownloadString(UPDATE_API_URL);
+                        string tag = ExtractJsonValue(json, "tag_name");
+                        string url = ExtractJsonValue(json, "browser_download_url");
+                        if (string.IsNullOrEmpty(tag)) return;
+                        string remote = tag.TrimStart('v', 'V');
+                        if (CompareVersions(remote, CURRENT_VERSION) > 0)
+                        {
+                            latestVersion = remote;
+                            latestDownloadUrl = url;
+                            updateAvailable = true;
+                            try { this.BeginInvoke((MethodInvoker)delegate { StartPulse(); }); } catch { }
+                        }
+                    }
+                }
+                catch { }
+            });
+        }
+
+        private static string ExtractJsonValue(string json, string key)
+        {
+            string search = "\"" + key + "\"";
+            int idx = json.IndexOf(search);
+            if (idx < 0) return "";
+            int colon = json.IndexOf(':', idx);
+            if (colon < 0) return "";
+            int q1 = json.IndexOf('"', colon);
+            if (q1 < 0) return "";
+            int q2 = json.IndexOf('"', q1 + 1);
+            if (q2 < 0) return "";
+            return json.Substring(q1 + 1, q2 - q1 - 1);
+        }
+
+        private static int CompareVersions(string a, string b)
+        {
+            string[] aParts = a.Split('.');
+            string[] bParts = b.Split('.');
+            int len = Math.Max(aParts.Length, bParts.Length);
+            for (int i = 0; i < len; i++)
+            {
+                int ai = 0, bi = 0;
+                if (i < aParts.Length) int.TryParse(aParts[i], out ai);
+                if (i < bParts.Length) int.TryParse(bParts[i], out bi);
+                if (ai != bi) return ai.CompareTo(bi);
+            }
+            return 0;
+        }
+
+        private void StartPulse()
+        {
+            if (pulseTimer != null) return;
+            pulseTimer = new Timer();
+            pulseTimer.Interval = 50;
+            pulseTimer.Tick += (s, ev) =>
+            {
+                pulsePhase += 0.15f;
+                if (pulsePhase > Math.PI * 2) pulsePhase -= (float)(Math.PI * 2);
+                if (btnUpdateRef != null && !btnUpdateRef.IsDisposed)
+                {
+                    int intensity = (int)(127 + 128 * Math.Sin(pulsePhase));
+                    if (intensity < 0) intensity = 0;
+                    if (intensity > 255) intensity = 255;
+                    btnUpdateRef.FlatAppearance.BorderColor = Color.FromArgb(255, 0, intensity, 0);
+                }
+            };
+            pulseTimer.Start();
+        }
+
+        private void InstallUpdate()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(latestDownloadUrl)) return;
+                string pluginDir = GetPluginDir();
+                string currentDll = "";
+                foreach (ActPluginData plugin in ActGlobals.oFormActMain.ActPlugins)
+                {
+                    if (plugin.pluginFile != null && plugin.pluginFile.Name.Contains("CO-ACTLib"))
+                    {
+                        currentDll = plugin.pluginFile.FullName;
+                        break;
+                    }
+                }
+                if (string.IsNullOrEmpty(currentDll)) return;
+                string tempDll = currentDll + ".new";
+                ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+                using (WebClient wc = new WebClient())
+                {
+                    wc.Headers.Add("User-Agent", "CO-ACTLib-Update");
+                    wc.DownloadFile(latestDownloadUrl, tempDll);
+                }
+                if (File.Exists(currentDll)) File.Delete(currentDll);
+                File.Move(tempDll, currentDll);
+                MessageBox.Show("Update downloaded. Disable and re-enable the plugin in ACT to apply.", "CO-ACTLib Update", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Update failed: " + ex.Message, "CO-ACTLib Update", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         protected override void OnVisibleChanged(EventArgs e)
         {
             base.OnVisibleChanged(e);
@@ -1361,12 +1482,23 @@ namespace Parsing_Plugin
             bool suppressClose = false;
             popup.Deactivate += (s, ev) => { if (!suppressClose) popup.Close(); };
 
+            Button btnUpdate = CreateSettingsButton("Update", updateAvailable ? Color.FromArgb(255, 0, 200, 0) : Color.FromArgb(255, 90, 90, 90));
+            btnUpdateRef = btnUpdate;
+            btnUpdate.Click += (s, ev) =>
+            {
+                suppressClose = true;
+                if (updateAvailable) InstallUpdate();
+                else MessageBox.Show("You are running the latest version (" + CURRENT_VERSION + ").", "CO-ACTLib", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                suppressClose = false;
+            };
+
             Button[] buttons = new Button[] {
                 CreateSettingsButton("Layout", Color.FromArgb(255, 220, 150, 50)),
                 CreateSettingsButton("Tiles", Color.FromArgb(255, 100, 180, 220)),
                 CreateSettingsButton("Opacity", Color.FromArgb(255, 80, 200, 80)),
                 CreateSettingsButton("Presets", Color.FromArgb(255, 50, 80, 160)),
-                CreateSettingsButton("Add Tiles", Color.FromArgb(255, 220, 180, 50))
+                CreateSettingsButton("Add Tiles", Color.FromArgb(255, 220, 180, 50)),
+                btnUpdate
             };
 
             buttons[0].Click += (s, ev) =>

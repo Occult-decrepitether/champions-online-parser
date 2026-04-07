@@ -16,8 +16,8 @@ using System.Xml;
 [assembly: AssemblyProduct("CO-ACTLib :8~^.)")]
 [assembly: AssemblyTrademark(":8~^.)")]
 [assembly: AssemblyCulture("en-US")]
-[assembly: AssemblyVersion("3.0.0.0")]
-[assembly: AssemblyFileVersion("3.0.0.0")]
+[assembly: AssemblyVersion("3.1.2.0")]
+[assembly: AssemblyFileVersion("3.1.2.0")]
 
 /* Version History
  *
