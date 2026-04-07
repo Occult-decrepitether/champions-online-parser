@@ -137,7 +137,7 @@ namespace Parsing_Plugin
         private const int DIVIDER_WIDTH = 2;
         private const int UPDATE_INTERVAL_MS = 1000;
 
-        private const string CURRENT_VERSION = "3.1.2";
+        private const string CURRENT_VERSION = "3.1.3";
         private const string UPDATE_API_URL = "https://api.github.com/repos/Occult-decrepitether/champions-online-parser/releases/latest";
         private bool updateAvailable = false;
         private string latestVersion = "";
